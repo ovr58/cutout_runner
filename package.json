@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "HTTP-сервис выреза: кадр карточки -> тот же растр с альфа-каналом (ONNX-сегментация, нативный ORT)",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "engines": {
     "node": ">=22"
   },
