@@ -24,10 +24,10 @@ a regression guard for free.
 ## Process (RED → GREEN → REFACTOR)
 
 1. **RED** — write the smallest test that captures the desired behavior (or the bug). Run it
-   with `{{TEST_COMMAND}}` and *watch it fail for the expected reason*. A test that passes
+   with `npm test` and *watch it fail for the expected reason*. A test that passes
    immediately tests nothing.
 2. **GREEN** — write the minimum code to make it pass. Resist building beyond the test.
-3. Run `{{TEST_COMMAND}}` — the new test passes and nothing else broke.
+3. Run `npm test` — the new test passes and nothing else broke.
 4. **REFACTOR** — clean up code and test now that they're green; re-run to confirm.
 5. For bugs: keep the reproduction test permanently as a regression guard.
 

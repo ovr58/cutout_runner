@@ -21,7 +21,7 @@ without observing it, is the most common way a session ships a broken change.
 ## Process
 
 1. **Name the success criterion** in concrete terms (which test, which observable behavior).
-2. **Run the cheapest sufficient check:** `{{TEST_COMMAND}}` for unit-level; a targeted
+2. **Run the cheapest sufficient check:** `npm test` for unit-level; a targeted
    reproduction for a bug fix; actually launch/observe for UI/behavioral changes. Don't claim
    a full end-to-end pass you didn't run.
 3. **Check for collateral damage:** did anything adjacent break? Run the relevant existing

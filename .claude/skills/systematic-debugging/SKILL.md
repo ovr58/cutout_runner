@@ -23,7 +23,7 @@ Working from evidence to root cause fixes the bug once, in one place.
 
 1. **Reproduce.** Get a reliable repro (a failing test, a command, exact steps). No repro →
    gather more evidence first; don't fix blind.
-2. **Read the evidence.** Inspect `{{PRIMARY_LOG_PATH}}` (filtered: `tail -N | grep -vE
+2. **Read the evidence.** Inspect журнал службы (`journalctl -u cutout-runner`; локально — stdout процесса) (filtered: `tail -N | grep -vE
    '<noise>'`), stack traces, dumps. Note the *first* anomaly, not the last symptom.
 3. **Locate.** Read the *full* implicated function/module (Read, not a grep snippet) before
    theorizing. Narrow with bisection (recent diff? minimal input that still fails?).
