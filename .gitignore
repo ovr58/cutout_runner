@@ -1,0 +1,34 @@
+# Локальные override прав Claude Code — машинно-зависимы, НЕ коммитить.
+.claude/settings.local.json
+
+# Переключатель озвучивания ответов (/speech on|off) — машинное состояние, НЕ коммитить.
+.claude/tts-enabled
+
+# Piper TTS (опционально, tools/piper/install-piper.ps1) — бинарник и голосовые модели,
+# десятки МБ, скачиваются по требованию, НЕ коммитить.
+tools/piper/bin/
+tools/piper/voices/
+
+# Личный локальный оверлей правил для Harvi Code — машинно-зависим, НЕ коммитить.
+AGENTS.local.md
+
+# Опциональная переносимая память проекта (docs/MEMORY_GUIDE.md) — локальная, НЕ коммитить.
+.ai-memory/
+
+# Секреты — НИКОГДА в git.
+.env
+.envrc
+secrets.*
+credentials.json
+*.key
+
+# Логи прогонов.
+logs/
+*.log
+
+# Артефакты сборки .NET (напр. tools/ui-audit).
+bin/
+obj/
+
+# Прогоны UI-аудита (crawl.json + screens/*.png).
+runs/

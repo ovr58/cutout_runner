@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <!-- Делает процесс аудита per-monitor DPI-aware ДО старта. Без этого на HiDPI-экране
+       (напр. 4K @250%) FlaUI читает bounds окна в виртуализованных ЛОГИЧЕСКИХ пикселях
+       (~1536), а Capture.Element снимает ФИЗИЧЕСКИЕ (~3840) → в кадр попадал только верхний
+       левый ~40% каждого окна (правый/нижний край срезан). PerMonitorV2 совмещает координаты
+       с реальными пикселями → скриншот всего окна. -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

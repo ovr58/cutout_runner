@@ -1,0 +1,39 @@
+{
+  "_comment": "ПРИМЕР локальных/машинно-зависимых прав. Скопируй в .claude/settings.local.json (он в .gitignore — НЕ коммитится). Сюда — пути к venv/интерпретатору, БД-клиенту, абсолютные пути конкретной машины.",
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(pytest:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\<you>\\.claude",
+      "D:\\tmp"
+    ]
+  },
+
+  "_speech_note": "Опционально (Windows): озвучивание ответов по завершении хода через .claude/hooks/on-stop.ps1 + System.Speech. Переключатель — /speech on|off (флаг .claude/tts-enabled), но сам хук должен быть зарегистрирован здесь, локально на машине. Раскомментируй блок ниже (переименуй _hooks -> hooks) и добавь его.",
+  "_hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/on-stop.ps1"
+            ],
+            "timeout": 30,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
