@@ -39,6 +39,15 @@ function main(): void {
     retryAfterSeconds: RETRY_AFTER_SECONDS,
   });
 
+  // Без сокета сервис бессмыслен. Ошибка `listen` (чаще всего EADDRINUSE) приходит событием, а
+  // не исключением, и без этого обработчика Node вываливает сырой стек мимо логгера — под
+  // systemd с Restart=on-failure он повторялся бы в журнале на каждой попытке.
+  server.on('error', (err) => {
+    log.error('server.failed', { port: config.port, reason: errorMessage(err) });
+    // Запись в pipe на Linux синхронна, поэтому строка журнала уходит до выхода.
+    process.exit(1);
+  });
+
   // Только 127.0.0.1: наружу сервис выпускает исключительно nginx, и ошибка в конфигурации
   // приложения не открывает его в интернет (docs/TZ.md FR-13).
   server.listen(config.port, '127.0.0.1', () => {
