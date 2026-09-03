@@ -107,7 +107,9 @@ function send(
   headers: http.OutgoingHttpHeaders = {},
 ): void {
   if (body === undefined) {
-    res.writeHead(status, headers);
+    // Явный нулевой Content-Length вместо chunked: у 204 тела нет по определению, и Node сам
+    // не поставит ни того, ни другого.
+    res.writeHead(status, status === 204 ? headers : { ...headers, 'content-length': 0 });
     res.end();
     return;
   }

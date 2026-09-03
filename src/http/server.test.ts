@@ -76,6 +76,7 @@ describe('POST /cutout — авторизация', () => {
       assert.equal(await wrong.text(), '');
       // Заголовок Date отличается по определению; всё остальное обязано совпасть (FR-09).
       assert.deepEqual(headersWithoutDate(missing), headersWithoutDate(wrong));
+      assert.equal(missing.headers.get('content-length'), '0', 'пустое тело — нулевая длина, не chunked');
     });
   });
 
@@ -102,6 +103,9 @@ describe('POST /cutout — контракт', () => {
       const res = await post(base);
       assert.equal(res.status, 204);
       assert.equal(await res.text(), '');
+      // У 204 не должно быть ни Content-Length, ни Transfer-Encoding.
+      assert.equal(res.headers.get('content-length'), null);
+      assert.equal(res.headers.get('transfer-encoding'), null);
     });
   });
 
