@@ -38,7 +38,7 @@ cd /opt/cutout-runner
 
 npm ci
 npm run build
-npm test        # 43 проверки, весов и сети не требуют
+npm test        # 47 проверок, весов и сети не требуют
 ```
 
 ## 3. Веса модели и её лицензия
@@ -140,6 +140,9 @@ SECRET=<тот же секрет, что в /etc/cutout-runner.env>
 # 1. Живость снаружи по TLS и редирект с http://
 curl -s "https://$DOMAIN/health"                      # {"status":"ok","ready":true}
 curl -sI "http://$DOMAIN/health" | head -1            # 301
+# сертификат валиден (проверку делает сам curl, без -k) и TLS не ниже 1.2 (NFR-03):
+curl -s -o /dev/null -w "verify=%{ssl_verify_result}\n" "https://$DOMAIN/health"   # verify=0
+curl -sS --tls-max 1.1 "https://$DOMAIN/health"       # ожидается ОШИБКА рукопожатия
 
 # 2. Без секрета и с неверным секретом — 401 оба раза, одинаково
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
@@ -156,13 +159,24 @@ file frame.png cutout.png          # ширина и высота обязаны
 curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Authorization: Bearer $SECRET" \
      -H "Content-Type: image/png" --data-binary @no-product.png "https://$DOMAIN/cutout"
 
+# 5. Порт наружу закрыт. На машине слушается только 127.0.0.1:
+sudo ss -tlnp | grep 8787          # 127.0.0.1:8787, НЕ 0.0.0.0:8787 и не [::]:8787
+# Вторая половина пункта — снаружи. Запускать с ЛЮБОЙ другой машины, не с этой:
+#   nc -vz -w 5 <домен> 8787       # ожидается отказ или таймаут, не "succeeded"
+
 # 6. Пик памяти под нагрузкой — близко к 600 МБ, ниже MemoryMax.
 #    Это и есть проверка, что арена ORT выключена: по коду её проверять бессмысленно.
 systemd-cgtop -1 --order=memory | grep cutout-runner
 sudo systemctl show cutout-runner -p MemoryPeak
 
 # 7. Перезапуск не требует ручных действий
-sudo systemctl restart cutout-runner && sleep 8 && curl -s http://127.0.0.1:8787/health
+sudo systemctl restart cutout-runner
+curl -s http://127.0.0.1:8787/health   # сразу: {"status":"loading","ready":false} — сокет уже поднят
+sleep 10
+curl -s http://127.0.0.1:8787/health   # {"status":"ok","ready":true}
+sudo journalctl -u cutout-runner -n 5 --no-pager
+#   server.listening -> model.loaded -> service.ready, без единой ручной команды между ними
+systemctl is-enabled cutout-runner     # enabled — служба переживёт и перезагрузку машины
 ```
 
 Совпадение RGB пиксель в пиксель (пункт 3 §9) проверяется на любой машине с Python:
@@ -180,6 +194,10 @@ half = sum(1 for v in alpha if 0 < v < 255) / len(alpha)
 print(f'OK: размер {a.size}, полутон на кромке {half:.3%}')
 EOF
 ```
+
+Пункт 8 §9 — не команда, а условие прогона: по этому файлу ставит человек, который сервис не
+писал, и нигде не догадывается. Каждое место, где пришлось догадаться или подсмотреть в код, —
+правка этого файла в том же изменении, а не устное пояснение установщику.
 
 ## 9. Обновление
 

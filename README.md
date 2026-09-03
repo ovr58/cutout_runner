@@ -51,7 +51,7 @@ Runtime на отдельной машине. Почему не в изолят�
 
 ```bash
 npm ci
-npm test                       # 44 проверки; весов модели и сети не требуют
+npm test                       # 47 проверок; весов модели и сети не требуют
 npm run build
 
 bash deploy/fetch-model.sh ./models       # веса + текст лицензии MIT, с проверкой MD5
