@@ -23,3 +23,5 @@
 | [0002](0002-trust-lane-by-model-not-host.md) | 2026-08-26 | Accepted | Полоса доверия (self-review / fast-merge) определяется моделью (Opus), а не хостом |
 | [0003](0003-spec-first-initialization.md) | 2026-08-26 | Accepted | Инициализация spec-first: три входа интейка → `docs/TZ.md` + `SPEC.md` + `VISUALS.md`, обязательный handoff с паузой на смену модели |
 | [0004](0004-single-visual-artifact.md) | 2026-08-26 | Accepted | Визуальный слой — один `docs/VISUALS.md` со стабильными ID `V-NN`, переписывается на месте; ТЗ и спека ссылаются, а не копируют |
+| [0005](0005-native-onnx-service-over-isolate.md) | 2026-09-04 | Accepted | Вырез считает отдельный сервис с нативным ONNX Runtime (резидентная сессия, арена выключена), а не изолят Edge Functions и не браузер |
+| [0006](0006-service-trust-boundary.md) | 2026-09-04 | Accepted | На машине сервиса нет ни одного ключа родительского проекта; право звать — общий секрет с постоянным по времени сравнением, allow-list адресов не заводим |

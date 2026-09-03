@@ -32,3 +32,17 @@ obj/
 
 # Прогоны UI-аудита (crawl.json + screens/*.png).
 runs/
+
+# Крупные машинные артефакты планирования (вне git).
+planning/archive/artifacts/
+
+# Node.
+node_modules/
+dist/
+
+# Веса модели — НЕ в git (десятки МБ; скачиваются установщиком, см. deploy/README.md).
+models/
+*.onnx
+
+# Локальное окружение разработки (секрет!) — см. deploy/cutout-runner.env.example.
+*.env

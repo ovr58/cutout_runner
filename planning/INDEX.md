@@ -7,7 +7,7 @@
 > Статусы: `REFERENCE` · `ACTIVE` · `DONE` · `ARCHIVED` · `ARTIFACT`.
 > Lifecycle: BACKLOG (`BACKLOG.md`) → Draft (`~/.claude/plans/`) → ACTIVE (`active/`) → DONE → ARCHIVED (`archive/plans/`).
 
-Обновлено: {{YYYY-MM-DD}}
+Обновлено: 2026-09-04
 
 ## BACKLOG — предтечи планов (todo на будущее)
 
@@ -27,7 +27,7 @@
 
 | Файл | Назначение | Статус |
 | --- | --- | --- |
-| _(пусто)_ | активных планов нет | — |
+| cutout-onnx-service_2026-09-04.md | Исполнение наряда `PLAN.md`: сервис выреза на нативном ONNX Runtime — контракт HTTP, конвейер выреза, развёртывание на Ubuntu | ACTIVE (с 2026-09-04) |
 
 ## archive/plans/ — выполненные планы
 

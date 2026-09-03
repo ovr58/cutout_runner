@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} — Claude Code entrypoint
+# cutout_runner — Claude Code entrypoint
 
 > Автозагружается в каждую сессию Claude Code. **Это адаптер, а не канон.**
 > Общие правила проекта — в корневом [`AGENTS.md`](AGENTS.md), он подтягивается импортом ниже.
@@ -65,7 +65,7 @@
 Правила по областям — `.github/instructions/*.instructions.md`. В Copilot активируются по
 `applyTo`-глобу; тебе их надо открыть по пути.
 
-- {{LANGUAGE}}-конвенции — `.github/instructions/{{LANGUAGE}}.instructions.md`.
+- typescript-конвенции — `.github/instructions/typescript.instructions.md`.
 - Общие правила — `.github/instructions/general-code.instructions.md`.
 
 <!-- Project-specific guidance: допиши сюда нюансы запуска, мониторинга длительных задач,

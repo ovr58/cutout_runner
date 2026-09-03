@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} — канон правил для всех AI-агентов
+# cutout_runner — канон правил для всех AI-агентов
 
 > **Это источник истины по кросс-AI правилам.** При расхождении между этим файлом и любым
 > файлом-адаптером (`CLAUDE.md`, `.github/copilot-instructions.md`) прав этот файл.
@@ -11,9 +11,13 @@
 
 ## О проекте
 
-- **Стек:** {{STACK}}
+- **Стек:** Node 22 LTS · TypeScript (`tsc` → `dist/`) · `node:http` без веб-фреймворка · `onnxruntime-node` (нативный ORT, модель `birefnet-general-lite`) · `sharp`/libvips · `node:test` · развёртывание systemd + nginx на Ubuntu
 - **Архитектура (обзор):**
-  {{ARCH_OVERVIEW}}
+  `src/main.ts` (порядок старта) → `src/http/server.ts` (два маршрута, сырые байты) →
+  `src/queue.ts` (ворота «один вырез за раз») → `src/cutout/` (кадр → альфа, без знания об HTTP) →
+  `src/model/session.ts` (резидентная ONNX-сессия, арена памяти выключена).
+  Слушает только `127.0.0.1`; наружу выпускает nginx с TLS. Состояния между запросами нет.
+  Схемы — `docs/VISUALS.md` [V-03](docs/VISUALS.md#v-03), [V-04](docs/VISUALS.md#v-04).
   <!-- 3–6 строк: слои/модули, точка входа, как запускается. Детали — в planning/reference/. -->
 
 ## Что умеет твой хост (и чего не умеет)

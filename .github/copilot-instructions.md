@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} — Copilot instructions
+# cutout_runner — Copilot instructions
 
 > Автозагружается VS Code / GitHub Copilot в этом workspace (имя файла обязано быть именно
 > `.github/copilot-instructions.md` — под другим именем автозагрузки не происходит).
@@ -9,8 +9,12 @@
 
 ## О проекте
 
-- **Стек:** {{STACK}}
-- **Архитектура:** {{ARCH_OVERVIEW}}
+- **Стек:** Node 22 LTS · TypeScript (`tsc` → `dist/`) · `node:http` без веб-фреймворка · `onnxruntime-node` (нативный ORT, модель `birefnet-general-lite`) · `sharp`/libvips · `node:test` · развёртывание systemd + nginx на Ubuntu
+- **Архитектура:** `src/main.ts` (порядок старта) → `src/http/server.ts` (два маршрута, сырые байты) →
+  `src/queue.ts` (ворота «один вырез за раз») → `src/cutout/` (кадр → альфа, без знания об HTTP) →
+  `src/model/session.ts` (резидентная ONNX-сессия, арена памяти выключена).
+  Слушает только `127.0.0.1`; наружу выпускает nginx с TLS. Состояния между запросами нет.
+  Схемы — `docs/VISUALS.md` [V-03](docs/VISUALS.md#v-03), [V-04](docs/VISUALS.md#v-04).
 
 ## Твоя полоса: консервативная
 

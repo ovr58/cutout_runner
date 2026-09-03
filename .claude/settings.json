@@ -26,9 +26,7 @@
       "Read(./credentials.json)",
       "Read(./**/*.key)"
     ],
-    "additionalDirectories": [
-      "{{TMP_DIR}}"
-    ]
+    "additionalDirectories": []
   },
 
   "_hooks_note": "Раскомментируй блок ниже (переименуй _hooks -> hooks) и впиши свои команды, если нужны автодействия. Hooks исполняет харнесс, НЕ Claude — именно так реализуются правила вида «каждый раз при X». Формат: matcher по имени тула + список команд. См. /help или claude-code-guide. SessionStart-пример ниже — OPT-IN bootstrap скилов (подмешивает карту .claude/skills/INDEX.md в контекст каждой сессии); по умолчанию consult-first держится правилом в CLAUDE.md, хук не обязателен.",
