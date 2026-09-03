@@ -20,7 +20,6 @@
 | Файл | Назначение | Статус |
 | --- | --- | --- |
 | 00_GENERAL_PLAN.md | Общий план проекта, верхнеуровневая архитектура | REFERENCE |
-| CLAUDE_MONITORING_GUIDE.md | Мониторинг длительных прогонов + дисциплина лимитов | REFERENCE |
 | SPEC_INTAKE_RESEARCH.md | Разведка с цитированием: форма ТЗ/спецификации по стандартам (29148, Volere, arc42, C4, Google design doc, PR/FAQ, INVEST), чужие spec-driven реализации (spec-kit, BMAD, Agent OS), стековые грабли по 7 профилям | REFERENCE |
 
 ## active/ — текущая работа

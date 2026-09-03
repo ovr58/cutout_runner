@@ -5,8 +5,8 @@ metadata:
   type: feedback
 ---
 
-Соблюдать дисциплину затрат лимитов из `docs/WORKING_RULES.md` и
-`planning/reference/CLAUDE_MONITORING_GUIDE.md`.
+Соблюдать дисциплину затрат лимитов из `docs/WORKING_RULES.md` и раздела «Мониторинг
+длительных прогонов» в `CLAUDE.md`.
 
 Ключевое: мониторинг длительных прогонов — только `ScheduleWakeup` + tail+grep (не `Monitor`),
 интервал 270 с держит кэш промптов тёплым (TTL 5 мин), ≤30 событий мониторинга в час;

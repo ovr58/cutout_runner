@@ -17,7 +17,7 @@
   consult-first — в каноне; здесь важно, что тебе не нужно открывать `INDEX.md` вручную, чтобы
   узнать о существовании скила. Карта — `.claude/skills/INDEX.md`.
 - **Нативные слэш-команды** из `.claude/commands/`: `/spec-intake`, `/plan-new`,
-  `/plan-status`, `/plan-archive`, `/bug-intake`, `/audit-ui`, `/review-branches` (последняя —
+  `/plan-status`, `/plan-archive`, `/review-branches` (последняя —
   Claude-Code-специфична: пауза на смену модели/эффорта, без Copilot-зеркала).
 - **Субагенты** из `.claude/agents/` + инструмент `Agent`. Модель субагента — поле `model`
   (параметр вызова или frontmatter). Продолжать существующего агента — через `SendMessage`,
@@ -57,8 +57,11 @@
   уведомит о завершении — не поллить, ставить длинный fallback.
 - Windows: не `TaskStop` фонового монитора, пока жив bash-родитель.
 
-Развёрнуто — [`docs/WORKING_RULES.md`](docs/WORKING_RULES.md) §1, §4 и
-[`planning/reference/CLAUDE_MONITORING_GUIDE.md`](planning/reference/CLAUDE_MONITORING_GUIDE.md).
+Развёрнуто — [`docs/WORKING_RULES.md`](docs/WORKING_RULES.md) §1, §4.
+
+> У этого проекта **длительных прогонов нет**: самая долгая операция — инференс 12–24 с.
+> Правила выше держатся на случай фоновых установок и прогонов на машине сервиса, а
+> generic-гайд мониторинга удалён при бутстрапе как неприменимый.
 
 ## Конвенции кода — точка входа
 
@@ -68,6 +71,15 @@
 - typescript-конвенции — `.github/instructions/typescript.instructions.md`.
 - Общие правила — `.github/instructions/general-code.instructions.md`.
 
-<!-- Project-specific guidance: допиши сюда нюансы запуска, мониторинга длительных задач,
-известные баги, маппинг UI-действий на файлы для /bug-intake и т.п.
+<!-- Project-specific guidance: допиши сюда нюансы запуска, известные баги и т.п.
 Жёсткие архитектурные границы проекта — в AGENTS.md (они кросс-AI), не здесь. -->
+
+## Конкретика этого проекта
+
+- **Запуск:** `npm run dev` · сборка `npm run build` · тесты `npm test` (44 проверки,
+  весов модели и сети не требуют — модель подменена заглушкой).
+- **Прогон на настоящих весах** требует файла по `CUTOUT_MODEL_PATH`; в git его нет,
+  скачивает `deploy/fetch-model.sh`.
+- **Грабли области** — `docs/SPEC.md` §9 и агент `.claude/agents/domain-dev.agent.md`.
+  Три самые дорогие: активация выхода модели (сигмоида, не min-max), арена памяти ORT,
+  число каналов маски после ресайза в `sharp`.

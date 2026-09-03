@@ -43,5 +43,6 @@ Working from evidence to root cause fixes the bug once, in one place.
 ## Cross-references
 
 - SUB-SKILL: test-driven-development, verification-before-completion
-- For long runs, follow the project monitoring guide
-  (`planning/reference/CLAUDE_MONITORING_GUIDE.md`) — `ScheduleWakeup`, not `Monitor`.
+- For long runs, follow the host adapter's monitoring section (`CLAUDE.md`) —
+  `ScheduleWakeup`, not `Monitor`. This project has no long pipelines: the slowest
+  operation is a 12–24 s inference.

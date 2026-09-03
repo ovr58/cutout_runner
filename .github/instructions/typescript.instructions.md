@@ -4,8 +4,8 @@ applyTo: "**/*.ts,**/*.tsx,**/*.mts,**/*.cts"
 
 # TypeScript Coding Instructions
 
-> Generic-пример. Адаптируй под версию/стиль проекта или удали, если стек не TypeScript.
-> Правила React вынесены в `react.instructions.md`, RN — в `react-native.instructions.md`.
+> Единственный языковой файл конвенций этого проекта: стек — Node + TypeScript, UI нет.
+> Общие tech-agnostic правила — `general-code.instructions.md` и `ponytail.instructions.md`.
 
 ## Types
 - `strict: true` в `tsconfig.json` — не ослаблять точечно ради одного файла

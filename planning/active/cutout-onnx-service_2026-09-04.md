@@ -33,7 +33,12 @@ Status: ACTIVE (с 2026-09-04)
 - [x] Плейсхолдеры шаблона заполнены: `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `00_GENERAL_PLAN.md`, INDEX-файлы, агент `domain-dev`.
 - [x] Seed-память установлена в `~/.claude/projects/d--AppBusters-projects-cutout-runner/memory/`.
 - [x] `.gitignore` дополнен: `node_modules/`, `dist/`, `models/`, `*.onnx`, `*.env`.
-- [ ] Стековый профиль: предложить пользователю удаление неприменимого (`python`/`react`/`react-native`/`swift` инструкции, `tools/ui-audit/`, `CLAUDE_MONITORING_GUIDE.md`, команды `bug-intake`). **Ничего не удалять без подтверждения.**
+- [x] Стековый профиль: по подтверждению пользователя (2026-09-04) снесено неприменимое —
+      инструкции `python`/`react`/`react-native`/`swift`, `tools/ui-audit/`, скил `auditing-ui`,
+      команда `/audit-ui`, `CLAUDE_MONITORING_GUIDE.md`, команды `bug-intake`, `INIT.md`.
+      Все ссылавшиеся файлы поправлены в том же изменении; запись B2 в `BACKLOG.md` снята
+      с причиной. Осталось стоять: `typescript`, `general-code`, `ponytail`.
+- [x] Влит `main` (правило «лестница ponytail прогоняется по умолчанию, а не по напоминанию»).
 
 ### М1 — каркас и контракт (US-02, US-E1…E3, E6, E7)
 
