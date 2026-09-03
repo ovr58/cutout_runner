@@ -1,0 +1,26 @@
+{
+  "name": "cutout-runner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HTTP-сервис выреза: кадр карточки -> тот же растр с альфа-каналом (ONNX-сегментация, нативный ORT)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "npm run build && node dist/main.js",
+    "start": "node dist/main.js",
+    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.23.0",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
