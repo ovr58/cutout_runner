@@ -68,12 +68,7 @@ export async function computeCutout(
 
   // Маска растягивается к ТОЧНЫМ размерам кадра: вызывающий проверяет размер по самому файлу
   // и вырез другого размера отвергает как отказ (docs/TZ.md FR-05).
-  const alphaFull = await sharp(Buffer.from(alpha.buffer, alpha.byteOffset, alpha.byteLength), {
-    raw: { width: size, height: size, channels: 1 },
-  })
-    .resize(frame.width, frame.height, { fit: 'fill', kernel: 'lanczos3' })
-    .raw()
-    .toBuffer();
+  const alphaFull = await resizeMask(alpha, size, frame.width, frame.height);
 
   // RGB берётся из исходного растра нетронутым: приём «текст за товаром» работает ровно
   // потому, что оба слоя — один растр, пиксель в пиксель (docs/TZ.md FR-06).
@@ -81,6 +76,38 @@ export async function computeCutout(
     .joinChannel(alphaFull, { raw: { width: frame.width, height: frame.height, channels: 1 } })
     .png()
     .toBuffer();
+}
+
+/**
+ * Маска модельного разрешения -> альфа размера кадра, строго ОДИН канал.
+ *
+ * Одноканальность приходится требовать явно: на одноканальном сыром входе sharp возвращает
+ * результат в трёх каналах, и `joinChannel` получает буфер втрое длиннее, чем ему обещано.
+ * Ошибки при этом не будет — будет молча съехавшая на чужой шаг строки альфа: полосы вместо
+ * выреза. Отказ, который видно только глазами на готовой карточке.
+ */
+async function resizeMask(
+  alpha: Uint8Array,
+  size: number,
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const { data, info } = await sharp(
+    Buffer.from(alpha.buffer, alpha.byteOffset, alpha.byteLength),
+    { raw: { width: size, height: size, channels: 1 } },
+  )
+    .resize(width, height, { fit: 'fill', kernel: 'lanczos3' })
+    .toColourspace('b-w')
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  if (info.channels !== 1 || data.byteLength !== width * height) {
+    throw new Error(
+      `mask resize produced ${info.channels} channel(s), ${data.byteLength} bytes; ` +
+        `expected 1 channel, ${width * height} bytes`,
+    );
+  }
+  return data;
 }
 
 interface DecodedFrame {

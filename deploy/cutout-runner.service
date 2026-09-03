@@ -1,0 +1,65 @@
+# Unit systemd для сервиса выреза. Установка — deploy/README.md.
+# Решения, из которых он собран: docs/adr/0005-native-onnx-service-over-isolate.md.
+
+[Unit]
+Description=cutout_runner - сервис выреза (ONNX-сегментация)
+After=network-online.target
+Wants=network-online.target
+# Сервис не должен уходить в бесконечный цикл перезапусков при системной поломке.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=cutout
+Group=cutout
+WorkingDirectory=/opt/cutout-runner
+
+# Секрет живёт ТОЛЬКО здесь, с правами 600 и владельцем root:root: файл разбирает сам
+# systemd до запуска процесса, поэтому пользователю cutout доступ к нему не нужен.
+# В git этот файл не попадает никогда - пример значений в cutout-runner.env.example.
+EnvironmentFile=/etc/cutout-runner.env
+ExecStart=/usr/bin/node /opt/cutout-runner/dist/main.js
+
+Restart=on-failure
+RestartSec=5
+
+# Замер 2026-09-03: пик 597 МБ при выключенной арене ORT (с ареной - 12 083 МБ).
+# Потолок с запасом на пики декодирования крупного кадра. Если сервис упирается в него -
+# это и есть сигнал, что арена включилась обратно (docs/TZ.md FR-02, NFR-02).
+MemoryHigh=1200M
+MemoryMax=1500M
+
+# Изоляция. Приложение не пишет на диск ничего: веса и файл окружения только читаются.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+# MemoryDenyWriteExecute намеренно НЕ включён: нативные расширения (ONNX Runtime, libvips)
+# отображают исполняемую память, и запрет ломает загрузку сессии.
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cutout-runner
+
+[Install]
+WantedBy=multi-user.target

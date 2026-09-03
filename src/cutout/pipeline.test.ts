@@ -87,6 +87,35 @@ describe('computeCutout', () => {
     assert.ok(halftoneShare(values) < 0.05, `доля полутона ${halftoneShare(values)}`);
   });
 
+  test('альфа лежит там же, где товар на маске — на кадре любых пропорций', async () => {
+    // Проверка геометрии, а не только гистограммы. Ловит подмену числа каналов при ресайзе
+    // маски: буфер втрое длиннее обещанного съезжает на чужой шаг строки, и вместо выреза
+    // получаются полосы — ошибка, которую «доля полутона» и «альфа непостоянна» пропускают.
+    for (const [width, height] of [
+      [120, 80],
+      [61, 173],
+    ] as const) {
+      const { png } = await makeFrame(width, height);
+      const cutout = await computeCutout(png, halfAndHalf, THRESHOLDS);
+      assert.ok(cutout !== null);
+
+      const alpha = await sharp(cutout).extractChannel(3).raw().toBuffer();
+      assert.equal(alpha.byteLength, width * height, `${width}x${height}: длина альфы`);
+
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const value = alpha[y * width + x] as number;
+          // Кромка приходится на середину; проверяются заведомо однозначные полосы по краям.
+          if (x < width * 0.3) {
+            assert.equal(value, 255, `${width}x${height}: (${x},${y}) должен быть товаром`);
+          } else if (x > width * 0.7) {
+            assert.equal(value, 0, `${width}x${height}: (${x},${y}) должен быть фоном`);
+          }
+        }
+      }
+    }
+  });
+
   test('товара не нашлось — null, а не мусорная маска', async () => {
     const { png } = await makeFrame(32, 32);
 
