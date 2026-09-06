@@ -10,7 +10,12 @@ import { computeCutout, UnreadableImageError } from './pipeline';
 /** Маленький вход: тесты проверяют геометрию и арифметику, а не качество сегментации. */
 const INPUT_SIZE = 16;
 
-const SETTINGS = { minCoverage: 0.01, maxCoverage: 0.99, activation: 'sigmoid' } as const;
+const SETTINGS = {
+  minCoverage: 0.01,
+  maxCoverage: 0.99,
+  maxHoleShare: 0.02,
+  activation: 'sigmoid',
+} as const;
 
 /**
  * Модель подменяется заглушкой: настоящие веса в git не идут, а прогон настоящей модели
@@ -31,6 +36,19 @@ function fakeSegmenter(fill: (index: number, size: number) => number): Segmenter
 
 /** Левая половина кадра — товар, правая — фон. Покрытие ~50%. */
 const halfAndHalf = fakeSegmenter((i, size) => ((i % size) < size / 2 ? 30 : -30));
+
+/**
+ * Рамка товара 12×12 с запертой дырой 8×8 внутри. До заливки товар — 80 px из 256
+ * (coverage 0,3125), после — 144 (0,5625). Доля дыры от площади товара 0,8, поэтому порог
+ * заливки в тесте задаётся заведомо выше.
+ */
+const ringWithHole = fakeSegmenter((i, size) => {
+  const x = i % size;
+  const y = Math.floor(i / size);
+  const outer = x >= 2 && x <= 13 && y >= 2 && y <= 13;
+  const inner = x >= 4 && x <= 11 && y >= 4 && y <= 11;
+  return outer && !inner ? 30 : -30;
+});
 
 /** Пёстрый кадр, чтобы совпадение RGB проверялось не на однотонной заливке. */
 async function makeFrame(width: number, height: number): Promise<{ png: Buffer; rgb: Buffer }> {
@@ -132,7 +150,7 @@ describe('computeCutout', () => {
     // Половина кадра: проходит при пороге 0,01…0,99 и не проходит при 0,6…0,99.
     assert.notEqual(await computeCutout(png, halfAndHalf, SETTINGS), null);
     assert.equal(
-      await computeCutout(png, halfAndHalf, { minCoverage: 0.6, maxCoverage: 0.99, activation: 'sigmoid' } as const),
+      await computeCutout(png, halfAndHalf, { ...SETTINGS, minCoverage: 0.6 }),
       null,
     );
   });
@@ -193,5 +211,46 @@ describe('computeCutout', () => {
       computeCutout(png, halfAndHalf, { ...SETTINGS, activation: 'minmax' }),
       ActivationMismatchError,
     );
+  });
+});
+
+describe('заливка дыр в конвейере', () => {
+  /** Порог отсечения между покрытием до заливки (0,3125) и после (0,5625). */
+  const BETWEEN = { ...SETTINGS, minCoverage: 0.4 } as const;
+
+  test('coverage считается ПОСЛЕ заливки, а не до неё', async () => {
+    // Порядок принципиален: заливка увеличивает долю товара, и отсечение обязано судить о
+    // той маске, которая уедет наружу. Тест ловит перестановку строк местами.
+    const { png } = await makeFrame(16, 16);
+
+    assert.notEqual(
+      await computeCutout(png, ringWithHole, { ...BETWEEN, maxHoleShare: 0.9 }),
+      null,
+      'с залитой дырой покрытие 0,5625 > 0,4 — вырез должен состояться',
+    );
+    assert.equal(
+      await computeCutout(png, ringWithHole, { ...BETWEEN, maxHoleShare: 0 }),
+      null,
+      'без заливки покрытие 0,3125 < 0,4 — честное «товара нет»',
+    );
+  });
+
+  test('дыра в готовом вырезе действительно залита', async () => {
+    const { png } = await makeFrame(16, 16);
+    const cutout = await computeCutout(png, ringWithHole, { ...SETTINGS, maxHoleShare: 0.9 });
+    assert.ok(cutout !== null);
+
+    const alpha = await sharp(cutout).extractChannel('alpha').raw().toBuffer();
+    assert.equal(alpha[8 * 16 + 8], 255, 'центр бывшей дыры — товар');
+  });
+
+  test('умолчание порога дыру такого размера НЕ заливает', async () => {
+    // Дыра здесь — 80% площади товара, то есть настоящий просвет, а не артефакт.
+    const { png } = await makeFrame(16, 16);
+    const cutout = await computeCutout(png, ringWithHole, SETTINGS);
+    assert.ok(cutout !== null);
+
+    const alpha = await sharp(cutout).extractChannel('alpha').raw().toBuffer();
+    assert.equal(alpha[8 * 16 + 8], 0, 'просвет обязан уцелеть при умолчании 2%');
   });
 });

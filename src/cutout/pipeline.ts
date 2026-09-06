@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 
 import type { Segmenter } from '../model/session';
-import { type Activation, coverage, toAlpha } from './mask';
+import { type Activation, coverage, fillHoles, toAlpha } from './mask';
 
 /**
  * Кадр -> вырез. Этот слой ничего не знает про HTTP: «выреза нет» выражается значением `null`,
@@ -24,6 +24,11 @@ export interface CutoutSettings {
   readonly maxCoverage: number;
   /** Чем выход модели превращается в маску — свойство весов, приходит из конфигурации. */
   readonly activation: Activation;
+  /**
+   * Доля площади товара, ниже которой запертая внутри контура область считается дырой и
+   * заливается. Ноль — заливку выключить.
+   */
+  readonly maxHoleShare: number;
 }
 
 /**
@@ -63,7 +68,10 @@ export async function computeCutout(
     throw new Error(`model returned ${raw.length} values, expected ${size * size}`);
   }
 
-  const alpha = toAlpha(raw, settings.activation);
+  // Заливка дыр идёт на модельном разрешении и ДО отсечения: она увеличивает долю товара,
+  // и `coverage` обязан считаться уже по контурной маске, иначе порог судит не о том, что
+  // уедет наружу.
+  const alpha = fillHoles(toAlpha(raw, settings.activation), size, size, settings.maxHoleShare);
   const covered = coverage(alpha);
   if (covered < settings.minCoverage || covered > settings.maxCoverage) {
     return null; // товара не нашлось — штатный исход, вызывающий снимет слой

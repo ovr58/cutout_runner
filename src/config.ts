@@ -26,6 +26,12 @@ export interface Config {
   readonly minCoverage: number;
   /** Выше этой доли вырез совпадает с кадром и слой бессмыслен -> 204. */
   readonly maxCoverage: number;
+  /**
+   * Доля площади товара, ниже которой запертая внутри контура область считается дырой модели
+   * и заливается. Выше — это настоящий просвет (дужки очков, промежутки между ножками
+   * кресла), и его трогать нельзя. Ноль — заливку выключить.
+   */
+  readonly maxHoleShare: number;
 }
 
 export class ConfigError extends Error {}
@@ -43,6 +49,7 @@ const DEFAULTS = {
   queueWaiting: 1,
   minCoverage: 0.01,
   maxCoverage: 0.99,
+  maxHoleShare: 0.02,
 } as const;
 
 const ACTIVATIONS: readonly Activation[] = ['sigmoid', 'minmax'];
@@ -63,6 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     queueWaiting: readInt(env, 'CUTOUT_QUEUE_WAITING', DEFAULTS.queueWaiting, 0, 64),
     minCoverage: readFraction(env, 'CUTOUT_MIN_COVERAGE', DEFAULTS.minCoverage),
     maxCoverage: readFraction(env, 'CUTOUT_MAX_COVERAGE', DEFAULTS.maxCoverage),
+    maxHoleShare: readFraction(env, 'CUTOUT_MAX_HOLE_SHARE', DEFAULTS.maxHoleShare),
   };
 
   if (config.minCoverage >= config.maxCoverage) {
