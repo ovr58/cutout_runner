@@ -45,4 +45,4 @@ Working from evidence to root cause fixes the bug once, in one place.
 - SUB-SKILL: test-driven-development, verification-before-completion
 - For long runs, follow the host adapter's monitoring section (`CLAUDE.md`) —
   `ScheduleWakeup`, not `Monitor`. This project has no long pipelines: the slowest
-  operation is a 12–24 s inference.
+  operation is a sub-second inference.

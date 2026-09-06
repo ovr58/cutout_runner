@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
 # Скачивает веса модели и текст её лицензии.
 #
-# Веса в git не идут: файл весит десятки мегабайт, а репозиторий публичный. Правило жёсткое —
-# у части моделей этого класса код открыт, а веса разрешены только для некоммерческого
-# использования, поэтому лицензия кладётся рядом с файлом и проверяется глазами.
+# Веса в git не идут: репозиторий публичный, а лицензия на веса и лицензия на код — разные
+# вещи. У модели этого сервиса они и правда разные, поэтому текст лицензии кладётся рядом с
+# файлом и читается глазами, а не подразумевается.
 #
 # Использование:  ./fetch-model.sh [каталог назначения]
 set -euo pipefail
 
 DEST_DIR="${1:-/opt/cutout-runner/models}"
-MODEL_NAME="birefnet-general-lite.onnx"
+MODEL_NAME="u2netp.onnx"
 
-# birefnet-general-lite (BiRefNet-general, backbone swin_v1_tiny). Лицензия — MIT
-# и на код, и на карточку модели. Замер 2026-09-03: полутон на кромке 0,2–0,4%.
-MODEL_URL="https://github.com/danielgatis/rembg/releases/download/v0.0.0/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"
-MODEL_MD5="4fab47adc4ff364be1713e97b7e66334"
-LICENSE_URL="https://raw.githubusercontent.com/ZhengPeng7/BiRefNet/main/LICENSE"
+# u2netp — лёгкая модель семейства U-2-Net, вход 320x320, файл 4,4 МБ.
+# Замер 2026-09-06 (машина с 31,8 ГиБ, потолка нет): инференс 0,55 с на одном потоке и
+# 0,25 с на четырёх, пик памяти процесса 320 МиБ. Прежняя birefnet-general-lite на том же
+# железе и тем же способом — 18,7-22,3 с и 6025 МиБ.
+#
+# ВНИМАНИЕ, ЛИЦЕНЗИЯ. Файл LICENSE в репозитории U-2-Net (Apache-2.0) покрывает КОД. Веса
+# лежат вне репозитория, и README отправляет за разрешением к авторам письмом. Владелец
+# написал и 2026-09-06 получил ПРЕДВАРИТЕЛЬНОЕ согласие на коммерческое использование;
+# детали оговариваются при коммерческом запуске. Риск отложен, а не закрыт: до коммерческого
+# запуска лицензию надо урегулировать письменно.
+MODEL_URL="https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx"
+MODEL_MD5="8e83ca70e441ab06c318d82300c84806"
+LICENSE_URL="https://raw.githubusercontent.com/xuebinqin/U-2-Net/master/LICENSE"
 
 mkdir -p "$DEST_DIR"
 tmp="$(mktemp "${DEST_DIR}/.${MODEL_NAME}.XXXXXX")"
@@ -32,10 +40,13 @@ mv "$tmp" "${DEST_DIR}/${MODEL_NAME}"
 trap - EXIT
 chmod 0444 "${DEST_DIR}/${MODEL_NAME}"
 
-echo "Скачивание лицензии -> ${DEST_DIR}/LICENSE-birefnet.txt"
-curl -fL --retry 3 -o "${DEST_DIR}/LICENSE-birefnet.txt" "$LICENSE_URL"
-chmod 0444 "${DEST_DIR}/LICENSE-birefnet.txt"
+echo "Скачивание лицензии -> ${DEST_DIR}/LICENSE-u2net.txt"
+curl -fL --retry 3 -o "${DEST_DIR}/LICENSE-u2net.txt" "$LICENSE_URL"
+chmod 0444 "${DEST_DIR}/LICENSE-u2net.txt"
 
 echo
-echo "Готово. Проверь, что в лицензии написано MIT:"
-head -3 "${DEST_DIR}/LICENSE-birefnet.txt"
+echo "Готово."
+echo "ВНИМАНИЕ: скачанный LICENSE (Apache-2.0) покрывает КОД U-2-Net, но НЕ веса."
+echo "Веса используются по предварительному письменному согласию авторов от 2026-09-06."
+echo "До коммерческого запуска согласие должно быть переведено в явное разрешение."
+head -3 "${DEST_DIR}/LICENSE-u2net.txt"

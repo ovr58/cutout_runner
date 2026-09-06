@@ -28,8 +28,15 @@ describe('loadConfig', () => {
     assert.equal(config.queueWaiting, 1);
     assert.equal(config.minCoverage, 0.01);
     assert.equal(config.maxCoverage, 0.99);
-    // После четырёх потоков отдача падает: 24 / 15,8 / 13,0 / 12,0 с на 1/2/4/8.
+    // После четырёх потоков отдача пропадает (замер 2026-09-06: 0,55 с на одном, 0,25 с на четырёх).
     assert.ok(config.threads >= 1 && config.threads <= 4);
+  });
+
+  test('умолчание активации соответствует умолчанию весов', () => {
+    // Пара «файл весов + активация» разъезжается молча, поэтому проверяется вместе.
+    const config = loadConfig(MINIMAL);
+    assert.match(config.modelPath, /u2netp/);
+    assert.equal(config.activation, 'minmax');
   });
 
   test('значения из окружения перекрывают умолчания', () => {
@@ -38,6 +45,7 @@ describe('loadConfig', () => {
       CUTOUT_PORT: '9000',
       CUTOUT_THREADS: '8',
       CUTOUT_MODEL_PATH: '/srv/weights.onnx',
+      CUTOUT_ACTIVATION: 'sigmoid',
       CUTOUT_QUEUE_WAITING: '2',
       CUTOUT_MIN_COVERAGE: '0.05',
       CUTOUT_MAX_COVERAGE: '0.9',
@@ -45,6 +53,7 @@ describe('loadConfig', () => {
     assert.equal(config.port, 9000);
     assert.equal(config.threads, 8);
     assert.equal(config.modelPath, '/srv/weights.onnx');
+    assert.equal(config.activation, 'sigmoid');
     assert.equal(config.queueWaiting, 2);
     assert.equal(config.minCoverage, 0.05);
     assert.equal(config.maxCoverage, 0.9);
@@ -55,6 +64,9 @@ describe('loadConfig', () => {
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_PORT: 'вжух' }), ConfigError);
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_THREADS: '0' }), ConfigError);
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_MIN_COVERAGE: '2' }), ConfigError);
+    // Опечатка в активации должна валить старт: до инференса она дойдёт неверной маской.
+    assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_ACTIVATION: 'Sigmoid' }), ConfigError);
+    assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_ACTIVATION: 'softmax' }), ConfigError);
     assert.throws(
       () => loadConfig({ ...MINIMAL, CUTOUT_MIN_COVERAGE: '0.9', CUTOUT_MAX_COVERAGE: '0.5' }),
       ConfigError,

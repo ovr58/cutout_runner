@@ -4,17 +4,18 @@ import test, { describe } from 'node:test';
 import sharp from 'sharp';
 
 import type { Segmenter } from '../model/session';
-import { halftoneShare } from './mask';
+import { ActivationMismatchError, halftoneShare } from './mask';
 import { computeCutout, UnreadableImageError } from './pipeline';
 
 /** Маленький вход: тесты проверяют геометрию и арифметику, а не качество сегментации. */
 const INPUT_SIZE = 16;
 
-const THRESHOLDS = { minCoverage: 0.01, maxCoverage: 0.99 };
+const SETTINGS = { minCoverage: 0.01, maxCoverage: 0.99, activation: 'sigmoid' } as const;
 
 /**
- * Модель подменяется заглушкой: настоящие веса в git не идут, а прогон занимает 12–24 с
- * (docs/SPEC.md §7). Заглушка отдаёт ровно те логиты, которые задал тест.
+ * Модель подменяется заглушкой: настоящие веса в git не идут, а прогон настоящей модели
+ * зависит от машины (docs/SPEC.md §7). Заглушка отдаёт ровно тот сырой выход, который
+ * задал тест — здесь это логиты, поэтому активация в SETTINGS сигмоидная.
  */
 function fakeSegmenter(fill: (index: number, size: number) => number): Segmenter {
   return {
@@ -54,7 +55,7 @@ describe('computeCutout', () => {
       [240, 320],
     ] as const) {
       const { png } = await makeFrame(width, height);
-      const cutout = await computeCutout(png, halfAndHalf, THRESHOLDS);
+      const cutout = await computeCutout(png, halfAndHalf, SETTINGS);
       assert.ok(cutout !== null, `${width}x${height}: ожидался вырез`);
 
       const meta = await sharp(cutout).metadata();
@@ -68,7 +69,7 @@ describe('computeCutout', () => {
   test('RGB ответа совпадает с кадром пиксель в пиксель', async () => {
     // На этом стоит весь приём «текст за товаром»: оба слоя — один растр (docs/TZ.md FR-06).
     const { png, rgb } = await makeFrame(97, 53);
-    const cutout = await computeCutout(png, halfAndHalf, THRESHOLDS);
+    const cutout = await computeCutout(png, halfAndHalf, SETTINGS);
     assert.ok(cutout !== null);
 
     const back = await sharp(cutout).removeAlpha().raw().toBuffer();
@@ -77,7 +78,7 @@ describe('computeCutout', () => {
 
   test('альфа непостоянна и почти без полутона', async () => {
     const { png } = await makeFrame(64, 64);
-    const cutout = await computeCutout(png, halfAndHalf, THRESHOLDS);
+    const cutout = await computeCutout(png, halfAndHalf, SETTINGS);
     assert.ok(cutout !== null);
 
     const alpha = await sharp(cutout).extractChannel(3).raw().toBuffer();
@@ -96,7 +97,7 @@ describe('computeCutout', () => {
       [61, 173],
     ] as const) {
       const { png } = await makeFrame(width, height);
-      const cutout = await computeCutout(png, halfAndHalf, THRESHOLDS);
+      const cutout = await computeCutout(png, halfAndHalf, SETTINGS);
       assert.ok(cutout !== null);
 
       const alpha = await sharp(cutout).extractChannel(3).raw().toBuffer();
@@ -120,18 +121,18 @@ describe('computeCutout', () => {
     const { png } = await makeFrame(32, 32);
 
     const nothing = fakeSegmenter(() => -30); // покрытие 0%
-    assert.equal(await computeCutout(png, nothing, THRESHOLDS), null);
+    assert.equal(await computeCutout(png, nothing, SETTINGS), null);
 
     const everything = fakeSegmenter(() => 30); // покрытие 100% — слой бессмыслен
-    assert.equal(await computeCutout(png, everything, THRESHOLDS), null);
+    assert.equal(await computeCutout(png, everything, SETTINGS), null);
   });
 
   test('порог берётся из настроек, а не зашит в код', async () => {
     const { png } = await makeFrame(32, 32);
     // Половина кадра: проходит при пороге 0,01…0,99 и не проходит при 0,6…0,99.
-    assert.notEqual(await computeCutout(png, halfAndHalf, THRESHOLDS), null);
+    assert.notEqual(await computeCutout(png, halfAndHalf, SETTINGS), null);
     assert.equal(
-      await computeCutout(png, halfAndHalf, { minCoverage: 0.6, maxCoverage: 0.99 }),
+      await computeCutout(png, halfAndHalf, { minCoverage: 0.6, maxCoverage: 0.99, activation: 'sigmoid' } as const),
       null,
     );
   });
@@ -139,7 +140,7 @@ describe('computeCutout', () => {
   test('JPEG на входе тоже принимается', async () => {
     const { png } = await makeFrame(48, 32);
     const jpeg = await sharp(png).jpeg().toBuffer();
-    const cutout = await computeCutout(jpeg, halfAndHalf, THRESHOLDS);
+    const cutout = await computeCutout(jpeg, halfAndHalf, SETTINGS);
     assert.ok(cutout !== null);
     const meta = await sharp(cutout).metadata();
     assert.equal(meta.width, 48);
@@ -148,11 +149,11 @@ describe('computeCutout', () => {
 
   test('неразбираемое тело — UnreadableImageError, а не пятисотка', async () => {
     await assert.rejects(
-      computeCutout(Buffer.from('это не картинка'), halfAndHalf, THRESHOLDS),
+      computeCutout(Buffer.from('это не картинка'), halfAndHalf, SETTINGS),
       UnreadableImageError,
     );
     await assert.rejects(
-      computeCutout(Buffer.alloc(0), halfAndHalf, THRESHOLDS),
+      computeCutout(Buffer.alloc(0), halfAndHalf, SETTINGS),
       UnreadableImageError,
     );
   });
@@ -165,6 +166,32 @@ describe('computeCutout', () => {
       },
     };
     const { png } = await makeFrame(32, 32);
-    await assert.rejects(computeCutout(png, wrongShape, THRESHOLDS), /expected/);
+    await assert.rejects(computeCutout(png, wrongShape, SETTINGS), /expected/);
+  });
+
+  test('готовая маска U²-Net проходит через min-max', async () => {
+    // Тот же кадр и тот же товар, но модель отдаёт уже активированный выход 0…1.
+    const activated = fakeSegmenter((i, size) => ((i % size) < size / 2 ? 0.98 : 0.02));
+    const { png } = await makeFrame(32, 32);
+    const cutout = await computeCutout(png, activated, { ...SETTINGS, activation: 'minmax' });
+    assert.ok(cutout !== null);
+
+    const { data, info } = await sharp(cutout)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    assert.equal(info.channels, 4);
+    assert.equal(data[3], 255, 'левый край — товар');
+    assert.equal(data[(32 - 1) * 4 + 3], 0, 'правый край — фон');
+  });
+
+  test('перепутанная активация — явная ошибка, а не тихий брак', async () => {
+    // Логиты, поданные как готовая маска: именно этот случай раньше проходил молча
+    // и портил кромку (docs/SPEC.md §9).
+    const { png } = await makeFrame(32, 32);
+    await assert.rejects(
+      computeCutout(png, halfAndHalf, { ...SETTINGS, activation: 'minmax' }),
+      ActivationMismatchError,
+    );
   });
 });

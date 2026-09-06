@@ -17,8 +17,8 @@ import { makeGate } from './queue';
  */
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 
-/** Инференс занимает 12–24 с; предлагать повтор раньше бессмысленно. */
-const RETRY_AFTER_SECONDS = 30;
+/** Инференс на `u2netp` — доли секунды (замер 2026-09-06: 0,55 с на одном потоке). */
+const RETRY_AFTER_SECONDS = 5;
 
 function main(): void {
   const config = loadConfig();

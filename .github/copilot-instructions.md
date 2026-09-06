@@ -9,7 +9,7 @@
 
 ## О проекте
 
-- **Стек:** Node 22 LTS · TypeScript (`tsc` → `dist/`) · `node:http` без веб-фреймворка · `onnxruntime-node` (нативный ORT, модель `birefnet-general-lite`) · `sharp`/libvips · `node:test` · развёртывание systemd + nginx на Ubuntu
+- **Стек:** Node 22 LTS · TypeScript (`tsc` → `dist/`) · `node:http` без веб-фреймворка · `onnxruntime-node` (нативный ORT, модель `u2netp`) · `sharp`/libvips · `node:test` · развёртывание systemd + nginx на Ubuntu
 - **Архитектура:** `src/main.ts` (порядок старта) → `src/http/server.ts` (два маршрута, сырые байты) →
   `src/queue.ts` (ворота «один вырез за раз») → `src/cutout/` (кадр → альфа, без знания об HTTP) →
   `src/model/session.ts` (резидентная ONNX-сессия, арена памяти выключена).

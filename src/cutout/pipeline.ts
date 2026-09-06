@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 
 import type { Segmenter } from '../model/session';
-import { coverage, logitsToAlpha } from './mask';
+import { type Activation, coverage, toAlpha } from './mask';
 
 /**
  * Кадр -> вырез. Этот слой ничего не знает про HTTP: «выреза нет» выражается значением `null`,
@@ -19,14 +19,17 @@ export class UnreadableImageError extends Error {
   }
 }
 
-export interface CutoutThresholds {
+export interface CutoutSettings {
   readonly minCoverage: number;
   readonly maxCoverage: number;
+  /** Чем выход модели превращается в маску — свойство весов, приходит из конфигурации. */
+  readonly activation: Activation;
 }
 
 /**
- * Нормировка входа BiRefNet: те же константы, на которых обучалась его основа.
- * Источник — сессия `birefnet_general` из rembg (docs/VISUALS.md, раздел «Референсы»).
+ * Нормировка входа: константы ImageNet, на которых обучались основы обеих моделей.
+ * Источник — сессии `birefnet_general` и `u2netp` из rembg: у второй те же mean/std, меняется
+ * только сторона входа (docs/VISUALS.md, раздел «Референсы»).
  */
 const MEAN = [0.485, 0.456, 0.406] as const;
 const STD = [0.229, 0.224, 0.225] as const;
@@ -41,7 +44,7 @@ const MAX_INPUT_PIXELS = 50_000_000;
 export async function computeCutout(
   body: Buffer,
   segmenter: Segmenter,
-  thresholds: CutoutThresholds,
+  settings: CutoutSettings,
 ): Promise<Buffer | null> {
   const frame = await decodeRgb(body);
   const size = segmenter.inputSize;
@@ -55,14 +58,14 @@ export async function computeCutout(
     .raw()
     .toBuffer();
 
-  const logits = await segmenter.run(toTensor(resized, size));
-  if (logits.length !== size * size) {
-    throw new Error(`model returned ${logits.length} values, expected ${size * size}`);
+  const raw = await segmenter.run(toTensor(resized, size));
+  if (raw.length !== size * size) {
+    throw new Error(`model returned ${raw.length} values, expected ${size * size}`);
   }
 
-  const alpha = logitsToAlpha(logits);
+  const alpha = toAlpha(raw, settings.activation);
   const covered = coverage(alpha);
-  if (covered < thresholds.minCoverage || covered > thresholds.maxCoverage) {
+  if (covered < settings.minCoverage || covered > settings.maxCoverage) {
     return null; // товара не нашлось — штатный исход, вызывающий снимет слой
   }
 
