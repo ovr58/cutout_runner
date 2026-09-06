@@ -244,13 +244,13 @@ describe('заливка дыр в конвейере', () => {
     assert.equal(alpha[8 * 16 + 8], 255, 'центр бывшей дыры — товар');
   });
 
-  test('умолчание порога дыру такого размера НЕ заливает', async () => {
-    // Дыра здесь — 80% площади товара, то есть настоящий просвет, а не артефакт.
+  test('умолчание конфигурации заливку не включает', async () => {
+    // Умолчание CUTOUT_MAX_HOLE_SHARE — ноль (замер 2026-09-07): просвет обязан уцелеть.
     const { png } = await makeFrame(16, 16);
-    const cutout = await computeCutout(png, ringWithHole, SETTINGS);
+    const cutout = await computeCutout(png, ringWithHole, { ...SETTINGS, maxHoleShare: 0 });
     assert.ok(cutout !== null);
 
     const alpha = await sharp(cutout).extractChannel('alpha').raw().toBuffer();
-    assert.equal(alpha[8 * 16 + 8], 0, 'просвет обязан уцелеть при умолчании 2%');
+    assert.equal(alpha[8 * 16 + 8], 0, 'без заливки просвет остаётся просветом');
   });
 });
