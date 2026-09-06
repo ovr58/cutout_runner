@@ -29,31 +29,5 @@
     "additionalDirectories": []
   },
 
-  "_hooks_note": "Раскомментируй блок ниже (переименуй _hooks -> hooks) и впиши свои команды, если нужны автодействия. Hooks исполняет харнесс, НЕ Claude — именно так реализуются правила вида «каждый раз при X». Формат: matcher по имени тула + список команд. См. /help или claude-code-guide. SessionStart-пример ниже — OPT-IN bootstrap скилов (подмешивает карту .claude/skills/INDEX.md в контекст каждой сессии); по умолчанию consult-first держится правилом в CLAUDE.md, хук не обязателен.",
-  "_hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "cat .claude/skills/INDEX.md" }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          { "type": "command", "command": "echo example: запрети опасные команды до их запуска" }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "echo example: автоформат/линтер по завершении хода" }
-        ]
-      }
-    ]
-  }
+  "_hooks_note": "Хуков в проекте нет. Примеры — в .claude/hooks.example.json (этот файл харнесс не читает). Заводить хук здесь можно ТОЛЬКО под ключом \"hooks\" верхнего уровня: ключи вида PreToolUse/PermissionRequest, лежащие вне \"hooks\" (в том числе под именем \"_hooks\"), ломают разбор файла — харнесс перестаёт применять и permissions отсюда."
 }
