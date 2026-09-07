@@ -28,9 +28,6 @@ describe('loadConfig', () => {
     assert.equal(config.queueWaiting, 1);
     assert.equal(config.minCoverage, 0.01);
     assert.equal(config.maxCoverage, 0.99);
-    // Заливка дыр по умолчанию выключена: замер 2026-09-07 показал, что на u2netp она
-    // теряет настоящие просветы и ничего не выигрывает.
-    assert.equal(config.maxHoleShare, 0);
     // После четырёх потоков отдача пропадает (замер 2026-09-06: 0,55 с на одном, 0,25 с на четырёх).
     assert.ok(config.threads >= 1 && config.threads <= 4);
   });
@@ -52,7 +49,6 @@ describe('loadConfig', () => {
       CUTOUT_QUEUE_WAITING: '2',
       CUTOUT_MIN_COVERAGE: '0.05',
       CUTOUT_MAX_COVERAGE: '0.9',
-      CUTOUT_MAX_HOLE_SHARE: '0.02',
     });
     assert.equal(config.port, 9000);
     assert.equal(config.threads, 8);
@@ -61,7 +57,6 @@ describe('loadConfig', () => {
     assert.equal(config.queueWaiting, 2);
     assert.equal(config.minCoverage, 0.05);
     assert.equal(config.maxCoverage, 0.9);
-    assert.equal(config.maxHoleShare, 0.02);
   });
 
   test('негодные значения отвергаются на старте, а не в проде', () => {
@@ -69,8 +64,6 @@ describe('loadConfig', () => {
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_PORT: 'вжух' }), ConfigError);
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_THREADS: '0' }), ConfigError);
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_MIN_COVERAGE: '2' }), ConfigError);
-    assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_MAX_HOLE_SHARE: '2' }), ConfigError);
-    assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_MAX_HOLE_SHARE: '-0.1' }), ConfigError);
     // Опечатка в активации должна валить старт: до инференса она дойдёт неверной маской.
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_ACTIVATION: 'Sigmoid' }), ConfigError);
     assert.throws(() => loadConfig({ ...MINIMAL, CUTOUT_ACTIVATION: 'softmax' }), ConfigError);

@@ -26,12 +26,6 @@ export interface Config {
   readonly minCoverage: number;
   /** Выше этой доли вырез совпадает с кадром и слой бессмыслен -> 204. */
   readonly maxCoverage: number;
-  /**
-   * Доля площади товара, ниже которой запертая внутри контура область считается дырой модели
-   * и заливается. Выше — это настоящий просвет (дужки очков, петля шнурка), и его трогать
-   * нельзя. Ноль — заливку выключить.
-   */
-  readonly maxHoleShare: number;
 }
 
 export class ConfigError extends Error {}
@@ -49,13 +43,6 @@ const DEFAULTS = {
   queueWaiting: 1,
   minCoverage: 0.01,
   maxCoverage: 0.99,
-  // Заливка дыр ВЫКЛЮЧЕНА по умолчанию — по замеру 2026-09-07 на семи кадрах площадки.
-  // У `u2netp` запертых дыр практически нет: 0…282 px, то есть до 0,46% площади товара, и
-  // визуально их не видно. Единственная заметная замкнутая область оказалась НАСТОЯЩИМ
-  // просветом — петлёй шнурка на clothing-shoes, — и порог 2% её заливал, показывая фон как
-  // часть ботинка. То есть заливка на этой модели терять может, а приобретать нечего.
-  // Механизм оставлен под настройкой: сменятся веса — включать по новому замеру, не на глаз.
-  maxHoleShare: 0,
 } as const;
 
 const ACTIVATIONS: readonly Activation[] = ['sigmoid', 'minmax'];
@@ -76,7 +63,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     queueWaiting: readInt(env, 'CUTOUT_QUEUE_WAITING', DEFAULTS.queueWaiting, 0, 64),
     minCoverage: readFraction(env, 'CUTOUT_MIN_COVERAGE', DEFAULTS.minCoverage),
     maxCoverage: readFraction(env, 'CUTOUT_MAX_COVERAGE', DEFAULTS.maxCoverage),
-    maxHoleShare: readFraction(env, 'CUTOUT_MAX_HOLE_SHARE', DEFAULTS.maxHoleShare),
   };
 
   if (config.minCoverage >= config.maxCoverage) {
