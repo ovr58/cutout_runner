@@ -36,9 +36,27 @@ sudo chown "$USER":"$USER" /opt/cutout-runner
 git clone <адрес репозитория> /opt/cutout-runner
 cd /opt/cutout-runner
 
-npm ci
+# ONNXRUNTIME_NODE_INSTALL=skip обязателен. Без него postinstall onnxruntime-node качает
+# CUDA-сборку ORT и распаковывает libonnxruntime_providers_cuda.so - 230 МБ ради GPU,
+# которого на коробке нет. На машине меньше ~2 ГБ это не медленно, а смертельно: npm ci
+# убивает OOM-killer (код 137), причём падение выглядит как «tsc: not found» на следующем
+# шаге, а не как нехватка памяти.
+#
+# Отрезается ровно лишнее, а не наугад: script/install-metadata.js объявляет для linux/x64
+# единственное требование ["cuda12"], а libonnxruntime.so.1 (44,7 МБ) и onnxruntime_binding.node
+# лежат в самом npm-пакете и остаются на месте. Проверено 2026-09-09 установкой с нуля.
+# На машине меньше ~1,5 ГБ ОЗУ npm ci убивает OOM и С этим флагом - ему самому не хватает
+# памяти на дерево зависимостей. Тогда нужен файл подкачки; на коробке в 1 ГБ это норма,
+# а не костыль. swappiness=10 - чтобы своп остался страховкой, а не режимом работы:
+#     sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+#     sudo mkswap /swapfile && sudo swapon /swapfile
+#     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+#     echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swappiness.conf
+# Сама служба свопом не пользуется: замер 2026-09-09 на 1 ГБ дал VmSwap: 0 kB.
+ONNXRUNTIME_NODE_INSTALL=skip npm ci
+
 npm run build
-npm test        # 47 проверок, весов и сети не требуют
+npm test        # 56 проверок, весов и сети не требуют
 ```
 
 ## 3. Веса модели и её лицензия
@@ -138,7 +156,12 @@ sudo certbot renew --dry-run
 
 ## 8. Приёмка
 
-Полный список — `docs/TZ.md` §9. Минимум, который надо пройти прямо на машине:
+Полный список — `docs/TZ.md` §9. Минимум, который надо пройти прямо на машине.
+
+**Делай паузу 3–6 с между запросами к `/cutout`.** Проверки ниже ломаются о собственный
+`limit_req` из `deploy/nginx.conf` (`rate=30r/m`, `burst=2`): пять POST подряд дают 429, и
+пункты 3 и 4 выглядят проваленными, хотя сервис исправен. Это исправная работа ограничителя,
+а не поломка - но выглядит одинаково, и на этом уже теряли время (2026-09-09).
 
 ```bash
 DOMAIN=<домен>
@@ -149,7 +172,14 @@ curl -s "https://$DOMAIN/health"                      # {"status":"ok","ready":t
 curl -sI "http://$DOMAIN/health" | head -1            # 301
 # сертификат валиден (проверку делает сам curl, без -k) и TLS не ниже 1.2 (NFR-03):
 curl -s -o /dev/null -w "verify=%{ssl_verify_result}\n" "https://$DOMAIN/health"   # verify=0
-curl -sS --tls-max 1.1 "https://$DOMAIN/health"       # ожидается ОШИБКА рукопожатия
+# TLS ниже 1.2 обязан отбиваться. Проверять ТОЛЬКО с Linux и ТОЛЬКО так: на Windows curl
+# ходит через schannel, который сам не умеет TLS 1.1, и отказ приходит от клиента - это
+# не доказательство. Тот же род ошибки, что и `nc` на порту ниже: инструмент отвечает за
+# себя, а не за сервер. Клиенту здесь явно разрешено предложить 1.1, поэтому отказ может
+# прийти только с сервера:
+echo | openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" \
+     -tls1_1 -cipher 'ALL:@SECLEVEL=0' 2>&1 | grep -i 'alert|protocol'
+#   ожидается: tlsv1 alert protocol version (alert number 70) - отказ СЕРВЕРА
 
 # 2. Без секрета и с неверным секретом — 401 оба раза, одинаково
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
