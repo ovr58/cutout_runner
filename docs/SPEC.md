@@ -79,9 +79,10 @@ npm test
 | `src/logger.ts` | Единственный способ писать в журнал | `log.info/warn/error(event, fields)` | формат строки, поток вывода |
 | `src/auth.ts` | Доказательство права звать | `makeAuthorizer(secret): (header?: string) => boolean` | хэширование до фиксированной длины, `timingSafeEqual` |
 | `src/model/session.ts` | Жизненный цикл ONNX-сессии | `createSegmenter(cfg): Promise<Segmenter>`; `Segmenter.run(input): Promise<Float32Array>`, `.inputSize` | опции сессии (арена, потоки), имена входа/выхода, форма тензора |
-| `src/cutout/pipeline.ts` | Кадр → вырез или «выреза нет» | `computeCutout(bytes, segmenter, cfg): Promise<Buffer \| null>` | препроцесс, активация, ресайз маски, порог покрытия, сборка PNG |
-| `src/cutout/mask.ts` | Чистая арифметика маски | `sigmoid`, `logitsToAlpha`, `coverage`, `halftoneShare` | — (чистые функции, тестируются без модели и без сети) |
-| `src/queue.ts` | «Один вырез за раз» | `makeGate(maxWaiting): <T>(job: () => Promise<T>) => Promise<T>` — отказ бросает `GateBusyError` | счётчик, цепочка промисов |
+| `src/cutout/pipeline.ts` | Кадр → вырез / сэмплы маски или «выреза нет» | `computeCutout(bytes, segmenter, cfg): Promise<Buffer \| null>`, `computeMask(...): Promise<MaskSamples \| null>` | препроцесс, активация, ресайз маски, порог покрытия (одно на обе операции), сборка PNG |
+| `src/cutout/mask.ts` | Чистая арифметика маски | `sigmoid`, `logitsToAlpha`, `coverage`, `halftoneShare`, `maskDimensions`, `downscaleByArea` | — (чистые функции, тестируются без модели и без сети) |
+| `src/operations.ts` | Операции поверх одной модели и одних ворот | `makeOperations(gate, getSegmenter, cfg): { cutout, mask }` | вход в очередь и проверка готовности модели — общие для обеих операций |
+| `src/queue.ts` | «Один инференс за раз» | `makeGate(maxWaiting): <T>(job: () => Promise<T>) => Promise<T>` — отказ бросает `GateBusyError` | счётчик, цепочка промисов |
 | `src/http/server.ts` | Контракт HTTP | `createServer(deps): http.Server` | маршрутизация, чтение тела, коды ответов |
 | `src/main.ts` | Сборка и порядок старта | — | последовательность: конфиг → сервер (503) → сессия → `ready` |
 
@@ -129,6 +130,21 @@ npm test
 | Тело больше потолка | 413 (ставит nginx) |
 | Слишком часто | 429 (ставит nginx) |
 | Очередь занята | 503 с `Retry-After` |
+
+**`POST /mask`** — сырые сэмплы альфы для карты занятости кадра. Контракт — ADR-0018 п. 4
+родительского проекта (Merch Kit, `../MK/docs/adr/0018-art-director-layout-patch.md`):
+
+| Что | Значение |
+| --- | --- |
+| Вход, секрет, очередь, коды 400 / 401 / 413 / 429 / 503 | **те же, что у `POST /cutout`**: тот же секрет, те же ворота «один инференс за раз» |
+| Товара не нашлось | **204** без тела — тем же кодом, что решает это для `/cutout` (одно суждение «есть ли товар» на весь сервис) |
+| Успех | 200, `Content-Type: application/octet-stream`, заголовки `x-mask-width` и `x-mask-height` |
+| Тело | ровно `width × height` байт альфы 0…255, построчно сверху вниз |
+| Размер | длинная сторона **256**, короткая — `round(256 × короткая / длинная)` по сторонам **кадра** (1440×1920 → 192×256); короткая не меньше 1 |
+| Уменьшение | усреднением по площади, **без порога**: мягкая кромка сохраняется (бинаризовать нельзя — тот же запрет, что у маски выреза) |
+
+Берётся альфа в размере кадра до наложения на кадр — та же, что `/cutout` кладёт в четвёртый
+канал. Каждая карточка, которой нужна карта, — отдельный инференс: кэша нет.
 
 Ошибка **никогда** не отдаётся телом с внутренностями — ни стека, ни путей, ни имени модели.
 

@@ -8,11 +8,13 @@ import { createServer, type ServerDeps } from './server';
 
 const SECRET = 'shared-secret';
 const PNG = Buffer.from('fake-png-bytes');
+const MASK = { width: 3, height: 2, data: Buffer.from([0, 128, 255, 255, 128, 0]) };
 
 const BASE_DEPS: ServerDeps = {
   authorize: (header) => header === `Bearer ${SECRET}`,
   isReady: () => true,
   cutout: async () => PNG,
+  mask: async () => MASK,
   maxBodyBytes: 1024,
   retryAfterSeconds: 30,
 };
@@ -32,8 +34,8 @@ async function withServer(
   }
 }
 
-function post(base: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(`${base}/cutout`, {
+function post(base: string, init: RequestInit = {}, path = '/cutout'): Promise<Response> {
+  return fetch(`${base}${path}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${SECRET}`, 'content-type': 'image/png' },
     body: PNG,
@@ -193,12 +195,141 @@ describe('POST /cutout — контракт', () => {
   });
 });
 
+describe('POST /mask', () => {
+  const postMask = (base: string, init: RequestInit = {}): Promise<Response> =>
+    post(base, init, '/mask');
+
+  test('без секрета и с неверным секретом — 401, одинаково, как у /cutout', async () => {
+    let called = false;
+    await withServer(
+      {
+        mask: async () => {
+          called = true;
+          return MASK;
+        },
+      },
+      async (base) => {
+        const missing = await postMask(base, { headers: { 'content-type': 'image/png' } });
+        const wrong = await postMask(base, {
+          headers: { authorization: 'Bearer nope', 'content-type': 'image/png' },
+        });
+        const cutoutMissing = await post(base, { headers: { 'content-type': 'image/png' } });
+
+        assert.equal(missing.status, 401);
+        assert.equal(wrong.status, 401);
+        assert.equal(await missing.text(), '');
+        assert.deepEqual(headersWithoutDate(missing), headersWithoutDate(wrong));
+        assert.deepEqual(headersWithoutDate(missing), headersWithoutDate(cutoutMissing));
+      },
+    );
+    assert.equal(called, false, 'без секрета инференс не запускается');
+  });
+
+  test('сэмплы отдаются как octet-stream с размерами в заголовках', async () => {
+    await withServer({}, async (base) => {
+      const res = await postMask(base);
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-type'), 'application/octet-stream');
+      assert.equal(res.headers.get('x-mask-width'), '3');
+      assert.equal(res.headers.get('x-mask-height'), '2');
+      assert.equal(Buffer.compare(Buffer.from(await res.arrayBuffer()), MASK.data), 0);
+    });
+  });
+
+  test('товара нет — 204 без тела, как у /cutout', async () => {
+    await withServer({ mask: async () => null }, async (base) => {
+      const res = await postMask(base);
+      assert.equal(res.status, 204);
+      assert.equal(await res.text(), '');
+      assert.equal(res.headers.get('content-length'), null);
+      assert.equal(res.headers.get('x-mask-width'), null);
+    });
+  });
+
+  test('тот же вход: чужой Content-Type — 400, тело больше потолка — 413, модель не готова — 503', async () => {
+    await withServer({ maxBodyBytes: 64 }, async (base) => {
+      const wrongType = await postMask(base, {
+        headers: { authorization: `Bearer ${SECRET}`, 'content-type': 'application/json' },
+      });
+      assert.equal(wrongType.status, 400);
+      const huge = await postMask(base, { body: Buffer.alloc(4096, 7) });
+      assert.equal(huge.status, 413);
+    });
+    await withServer({ isReady: () => false }, async (base) => {
+      const res = await postMask(base);
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('retry-after'), '30');
+    });
+  });
+
+  test('неразбираемый кадр — 400, очередь занята — 503, поломка — 500; без внутренностей', async () => {
+    await withServer(
+      {
+        mask: async () => {
+          throw new UnreadableImageError(new Error('vips: bad header at /srv/x'));
+        },
+      },
+      async (base) => {
+        const res = await postMask(base);
+        assert.equal(res.status, 400);
+        assert.equal(await res.text(), '');
+      },
+    );
+    await withServer(
+      {
+        mask: async () => {
+          throw new GateBusyError();
+        },
+      },
+      async (base) => {
+        const res = await postMask(base);
+        assert.equal(res.status, 503);
+        assert.equal(res.headers.get('retry-after'), '30');
+      },
+    );
+    await withServer(
+      {
+        mask: async () => {
+          throw new Error('secret path /srv/weights.onnx');
+        },
+      },
+      async (base) => {
+        const res = await postMask(base);
+        assert.equal(res.status, 500);
+        assert.equal(await res.text(), '');
+      },
+    );
+  });
+
+  test('операции не путаются: /mask не зовёт вырез, /cutout не зовёт маску', async () => {
+    const calls: string[] = [];
+    await withServer(
+      {
+        cutout: async () => {
+          calls.push('cutout');
+          return PNG;
+        },
+        mask: async () => {
+          calls.push('mask');
+          return MASK;
+        },
+      },
+      async (base) => {
+        await postMask(base);
+        await post(base);
+      },
+    );
+    assert.deepEqual(calls, ['mask', 'cutout']);
+  });
+});
+
 describe('маршрутизация', () => {
   test('чужой путь — 404, чужой метод — 405', async () => {
     await withServer({}, async (base) => {
       assert.equal((await fetch(`${base}/`)).status, 404);
       assert.equal((await fetch(`${base}/models`)).status, 404);
       assert.equal((await fetch(`${base}/cutout`)).status, 405);
+      assert.equal((await fetch(`${base}/mask`)).status, 405);
       assert.equal((await fetch(`${base}/health`, { method: 'POST' })).status, 405);
     });
   });

@@ -1,9 +1,9 @@
 import { makeAuthorizer } from './auth';
 import { ConfigError, loadConfig } from './config';
-import { computeCutout } from './cutout/pipeline';
 import { createServer } from './http/server';
 import { errorMessage, log } from './logger';
 import { createSegmenter, type Segmenter } from './model/session';
+import { makeOperations } from './operations';
 import { makeGate } from './queue';
 
 /**
@@ -26,15 +26,13 @@ function main(): void {
   const gate = makeGate(config.queueWaiting);
   const authorize = makeAuthorizer(config.secret);
   let segmenter: Segmenter | null = null;
+  const operations = makeOperations(gate, () => segmenter, config);
 
   const server = createServer({
     authorize,
     isReady: () => segmenter !== null,
-    cutout: (body) =>
-      gate(async () => {
-        if (segmenter === null) throw new Error('segmenter is not ready');
-        return computeCutout(body, segmenter, config);
-      }),
+    cutout: operations.cutout,
+    mask: operations.mask,
     maxBodyBytes: MAX_BODY_BYTES,
     retryAfterSeconds: RETRY_AFTER_SECONDS,
   });

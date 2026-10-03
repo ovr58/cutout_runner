@@ -115,3 +115,103 @@ export function halftoneShare(alpha: Uint8Array): number {
   }
   return halftone / alpha.length;
 }
+
+/**
+ * Длинная сторона сэмплов маски для `POST /mask` (docs/SPEC.md §5, ADR-0018 п. 4 Merch Kit).
+ * 49 КБ на кадр 1440×1920 — карта занятости считается по ним, а не по полному растру.
+ */
+export const MASK_LONG_SIDE = 256;
+
+/**
+ * Размер сэмплов маски: длинная сторона — {@link MASK_LONG_SIDE}, короткая — в пропорции
+ * **кадра**, а не квадрата входа модели (для 1440×1920 — 192×256). Короткая не опускается ниже 1,
+ * иначе у вырожденно вытянутого кадра тело получилось бы нулевой длины.
+ */
+export function maskDimensions(
+  width: number,
+  height: number,
+): { readonly width: number; readonly height: number } {
+  const long = Math.max(width, height);
+  const short = Math.max(1, Math.round((MASK_LONG_SIDE * Math.min(width, height)) / long));
+  return width >= height
+    ? { width: MASK_LONG_SIDE, height: short }
+    : { width: short, height: MASK_LONG_SIDE };
+}
+
+/**
+ * Масштабирование альфы усреднением по площади: значение выходной ячейки — среднее исходных
+ * пикселей, попавших в неё, с весом, равным доле площади пикселя внутри ячейки. Порога нет:
+ * мягкая кромка сохраняется (тот же запрет бинаризации, что у маски выреза).
+ *
+ * Свой код, а не ядро sharp: среди ядер sharp нет усреднения по площади (lanczos даёт выбросы
+ * за кромкой), а контракт требует именно его. Разделяемо по осям: площадь прямоугольной ячейки
+ * — произведение длин по осям. Веса целочисленные (в единицах 1/dst), поэтому результат не
+ * зависит от порядка суммирования и воспроизводим бит в бит.
+ */
+export function downscaleByArea(
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  outWidth: number,
+  outHeight: number,
+): Uint8Array {
+  if (alpha.length !== width * height) {
+    throw new Error(`alpha has ${alpha.length} bytes, expected ${width * height}`);
+  }
+  const columns = areaWeights(width, outWidth);
+  const rows = areaWeights(height, outHeight);
+
+  // Первый проход — по горизонтали: height строк по outWidth сумм (в единицах `width`).
+  const wide = new Float64Array(outWidth * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let ox = 0; ox < outWidth; ox += 1) {
+      const { first, weights } = columns[ox] as AreaSpan;
+      let sum = 0;
+      for (let k = 0; k < weights.length; k += 1) {
+        sum += (weights[k] as number) * (alpha[y * width + first + k] as number);
+      }
+      wide[y * outWidth + ox] = sum;
+    }
+  }
+
+  // Второй проход — по вертикали; делитель — полная площадь ячейки в тех же единицах.
+  const out = new Uint8Array(outWidth * outHeight);
+  const area = width * height;
+  for (let oy = 0; oy < outHeight; oy += 1) {
+    const { first, weights } = rows[oy] as AreaSpan;
+    for (let ox = 0; ox < outWidth; ox += 1) {
+      let sum = 0;
+      for (let k = 0; k < weights.length; k += 1) {
+        sum += (weights[k] as number) * (wide[(first + k) * outWidth + ox] as number);
+      }
+      out[oy * outWidth + ox] = Math.round(sum / area);
+    }
+  }
+  return out;
+}
+
+interface AreaSpan {
+  readonly first: number;
+  readonly weights: readonly number[];
+}
+
+/**
+ * Для каждой выходной ячейки по оси — первый исходный пиксель и целочисленные веса пикселей,
+ * которые она накрывает. Ячейка `i` занимает отрезок [i·src, (i+1)·src) в единицах 1/dst
+ * исходного пикселя; пиксель `k` — [k·dst, (k+1)·dst). Веса одной ячейки в сумме дают `src`.
+ */
+function areaWeights(src: number, dst: number): AreaSpan[] {
+  const spans: AreaSpan[] = [];
+  for (let i = 0; i < dst; i += 1) {
+    const lo = i * src;
+    const hi = (i + 1) * src;
+    const first = Math.floor(lo / dst);
+    const last = Math.ceil(hi / dst) - 1;
+    const weights: number[] = [];
+    for (let k = first; k <= last; k += 1) {
+      weights.push(Math.min(hi, (k + 1) * dst) - Math.max(lo, k * dst));
+    }
+    spans.push({ first, weights });
+  }
+  return spans;
+}

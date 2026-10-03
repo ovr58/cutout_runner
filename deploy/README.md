@@ -196,6 +196,14 @@ file frame.png cutout.png          # ширина и высота обязаны
 curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Authorization: Bearer $SECRET" \
      -H "Content-Type: image/png" --data-binary @no-product.png "https://$DOMAIN/cutout"
 
+# 4а. Маска (версия с `POST /mask`): тот же секрет, та же очередь; тело - сэмплы альфы
+curl -s -X POST -H "Authorization: Bearer $SECRET" -H "Content-Type: image/png" \
+     --data-binary @frame.png "https://$DOMAIN/mask" -o mask.bin -D mask.hdr \
+     -w "%{http_code} %{time_total}s\n"                # 200 и время вызова
+grep -i '^x-mask' mask.hdr                              # для кадра 1440x1920: 192 и 256
+wc -c < mask.bin                                        # width x height = 49152
+# без секрета - 401, кадр без товара - 204, как у /cutout
+
 # 5. Порт наружу закрыт. Проверяется ДВУМЯ фактами вместе — по отдельности каждый лжёт.
 # На машине: привязка обязана быть к петле.
 sudo ss -tlnp | grep 8787          # 127.0.0.1:8787, НЕ 0.0.0.0:8787 и не [::]:8787
@@ -272,6 +280,23 @@ sudo systemctl restart cutout-runner
 ```
 
 Веса при обновлении кода **не перекачиваются**: они лежат отдельно и живут дольше релиза.
+
+### Включение `POST /mask` на уже установленной коробке
+
+Код операции приезжает обычным обновлением выше, но nginx пропускает наружу только маршруты из
+своего файла. Живой файл `/etc/nginx/conf.d/cutout-runner.conf` **не перезаписывается** копией
+из репозитория: в нём настоящие домен и пути сертификата. Правится одна строка:
+
+```bash
+sudo grep -n 'location' /etc/nginx/conf.d/cutout-runner.conf   # ожидается: location = /cutout {
+sudo sed -i 's#location = /cutout {#location ~ ^/(cutout|mask)$ {#' /etc/nginx/conf.d/cutout-runner.conf
+sudo nginx -t                                                  # syntax is ok, иначе не продолжать
+sudo systemctl restart cutout-runner
+sudo systemctl reload nginx
+```
+
+После этого - проверка 4а из раздела «Приёмка». `/mask` делит с `/cutout` зону `limit_req`
+(`rate=30r/m`, `burst=2`) и очередь инференса.
 
 ### Смена модели на уже установленной коробке
 

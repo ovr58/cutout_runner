@@ -4,8 +4,8 @@ import test, { describe } from 'node:test';
 import sharp from 'sharp';
 
 import type { Segmenter } from '../model/session';
-import { ActivationMismatchError, halftoneShare } from './mask';
-import { computeCutout, UnreadableImageError } from './pipeline';
+import { ActivationMismatchError, downscaleByArea, halftoneShare } from './mask';
+import { computeCutout, computeMask, UnreadableImageError } from './pipeline';
 
 /** Маленький вход: тесты проверяют геометрию и арифметику, а не качество сегментации. */
 const INPUT_SIZE = 16;
@@ -192,6 +192,84 @@ describe('computeCutout', () => {
     await assert.rejects(
       computeCutout(png, halfAndHalf, { ...SETTINGS, activation: 'minmax' }),
       ActivationMismatchError,
+    );
+  });
+});
+
+describe('computeMask', () => {
+  test('кадр 1440×1920 даёт 192×256 и тело длиной 49 152, есть полутон', async () => {
+    const { png } = await makeFrame(1440, 1920);
+    const samples = await computeMask(png, halfAndHalf, SETTINGS);
+    assert.ok(samples !== null);
+
+    assert.equal(samples.width, 192);
+    assert.equal(samples.height, 256);
+    assert.equal(samples.data.byteLength, 49_152);
+    assert.ok(samples.data.includes(0) && samples.data.includes(255), 'и товар, и фон');
+    // Кромка не бинаризована: хотя бы один полутон между 0 и 255.
+    assert.ok(
+      samples.data.some((v) => v > 0 && v < 255),
+      'в сэмплах нет полутона — маска бинаризована',
+    );
+  });
+
+  test('сэмплы — это альфа выреза в размере кадра, уменьшенная по площади', async () => {
+    // Альфа кадра берётся до наложения на кадр: та же, что `/cutout` кладёт в четвёртый канал.
+    for (const [width, height] of [
+      [120, 80],
+      [137, 91],
+    ] as const) {
+      const { png } = await makeFrame(width, height);
+      const cutout = await computeCutout(png, halfAndHalf, SETTINGS);
+      const samples = await computeMask(png, halfAndHalf, SETTINGS);
+      assert.ok(cutout !== null && samples !== null);
+
+      const alpha = await sharp(cutout).extractChannel(3).raw().toBuffer();
+      const expected = downscaleByArea(
+        new Uint8Array(alpha.buffer, alpha.byteOffset, alpha.byteLength),
+        width,
+        height,
+        samples.width,
+        samples.height,
+      );
+      assert.equal(Buffer.compare(samples.data, Buffer.from(expected)), 0, `${width}x${height}`);
+    }
+  });
+
+  test('геометрия: левая часть — товар, правая — фон, строки сверху вниз', async () => {
+    const { png } = await makeFrame(240, 160);
+    const samples = await computeMask(png, halfAndHalf, SETTINGS);
+    assert.ok(samples !== null);
+    assert.deepEqual([samples.width, samples.height], [256, 171]);
+
+    for (let y = 0; y < samples.height; y += 1) {
+      assert.equal(samples.data[y * samples.width + 5], 255, `(5,${y}) — товар`);
+      assert.equal(
+        samples.data[y * samples.width + samples.width - 6],
+        0,
+        `(${samples.width - 6},${y}) — фон`,
+      );
+    }
+  });
+
+  test('товара нет — null, по тому же правилу, что у выреза', async () => {
+    const { png } = await makeFrame(32, 32);
+    const everything = fakeSegmenter(() => 30);
+    const nothing = fakeSegmenter(() => -30);
+    for (const segmenter of [nothing, everything]) {
+      assert.equal(await computeCutout(png, segmenter, SETTINGS), null);
+      assert.equal(await computeMask(png, segmenter, SETTINGS), null);
+    }
+    // Порог — тот же из настроек: на половинном покрытии оба отвечают одинаково.
+    const strict = { minCoverage: 0.6, maxCoverage: 0.99, activation: 'sigmoid' } as const;
+    assert.equal(await computeCutout(png, halfAndHalf, strict), null);
+    assert.equal(await computeMask(png, halfAndHalf, strict), null);
+  });
+
+  test('неразбираемое тело — UnreadableImageError', async () => {
+    await assert.rejects(
+      computeMask(Buffer.from('это не картинка'), halfAndHalf, SETTINGS),
+      UnreadableImageError,
     );
   });
 });

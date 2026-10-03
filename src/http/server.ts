@@ -1,7 +1,7 @@
 import http from 'node:http';
 
 import type { Authorizer } from '../auth';
-import { UnreadableImageError } from '../cutout/pipeline';
+import { type MaskSamples, UnreadableImageError } from '../cutout/pipeline';
 import { GateBusyError } from '../queue';
 import { errorMessage, log } from '../logger';
 
@@ -11,13 +11,16 @@ import { errorMessage, log } from '../logger';
  * карточке. Полностью — docs/SPEC.md §5.
  *
  * Этот слой ничего не знает про ONNX: он различает только «вырез», «выреза нет»,
- * «не разобралось» и «занято».
+ * «не разобралось» и «занято». Две операции — `/cutout` и `/mask` — идут одним путём: тот же
+ * секрет, те же проверки входа, та же очередь; различается только то, что отдаётся в ответ.
  */
 export interface ServerDeps {
   readonly authorize: Authorizer;
   readonly isReady: () => boolean;
   /** Вырез или `null` — «товара не нашлось». Может бросить {@link GateBusyError}. */
   readonly cutout: (body: Buffer) => Promise<Buffer | null>;
+  /** Сэмплы маски или `null` — «товара не нашлось» (то же суждение, что у выреза). */
+  readonly mask: (body: Buffer) => Promise<MaskSamples | null>;
   /** Потолок тела. Основной стоит в nginx (413 до Node); этот — на случай запуска без него. */
   readonly maxBodyBytes: number;
   /** Значение заголовка `Retry-After` при занятой очереди, секунды. */
@@ -48,7 +51,7 @@ async function handle(
       return sendHealth(res, deps.isReady());
     }
 
-    if (path !== '/cutout') return send(res, 404);
+    if (path !== '/cutout' && path !== '/mask') return send(res, 404);
     if (method !== 'POST') return send(res, 405);
 
     // Авторизация — до всего остального: неавторизованный не должен узнать даже того,
@@ -64,6 +67,16 @@ async function handle(
     if (body === TOO_LARGE) return send(res, 413);
     if (body === UNREADABLE) return send(res, 400);
     bytesIn = body.byteLength;
+
+    if (path === '/mask') {
+      const samples = await deps.mask(body);
+      if (samples === null) return send(res, 204); // тот же штатный исход, что у выреза
+      return send(res, 200, samples.data, {
+        'content-type': 'application/octet-stream',
+        'x-mask-width': String(samples.width),
+        'x-mask-height': String(samples.height),
+      });
+    }
 
     const cutout = await deps.cutout(body);
     if (cutout === null) return send(res, 204); // штатный исход: товара не нашлось

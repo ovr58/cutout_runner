@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 
 import type { Segmenter } from '../model/session';
-import { type Activation, coverage, toAlpha } from './mask';
+import { type Activation, coverage, downscaleByArea, maskDimensions, toAlpha } from './mask';
 
 /**
  * Кадр -> вырез. Этот слой ничего не знает про HTTP: «выреза нет» выражается значением `null`,
@@ -41,11 +41,24 @@ const STD = [0.229, 0.224, 0.225] as const;
  */
 const MAX_INPUT_PIXELS = 50_000_000;
 
-export async function computeCutout(
+/** Кадр и альфа его размера: общий результат инференса для выреза и для сэмплов маски. */
+interface FrameAlpha {
+  readonly frame: DecodedFrame;
+  /** Один канал, `frame.width × frame.height` байт, строки сверху вниз. */
+  readonly alpha: Buffer;
+}
+
+/**
+ * Кадр -> альфа размера кадра, либо `null` — «товара не нашлось».
+ *
+ * Единственное место, где решается, есть ли в кадре товар: `/cutout` и `/mask` обязаны
+ * отвечать 204 на одних и тех же кадрах (ADR-0018 п. 4 Merch Kit), поэтому условие не копируется.
+ */
+async function computeFrameAlpha(
   body: Buffer,
   segmenter: Segmenter,
   settings: CutoutSettings,
-): Promise<Buffer | null> {
+): Promise<FrameAlpha | null> {
   const frame = await decodeRgb(body);
   const size = segmenter.inputSize;
 
@@ -71,14 +84,50 @@ export async function computeCutout(
 
   // Маска растягивается к ТОЧНЫМ размерам кадра: вызывающий проверяет размер по самому файлу
   // и вырез другого размера отвергает как отказ (docs/TZ.md FR-05).
-  const alphaFull = await resizeMask(alpha, size, frame.width, frame.height);
+  return { frame, alpha: await resizeMask(alpha, size, frame.width, frame.height) };
+}
+
+export async function computeCutout(
+  body: Buffer,
+  segmenter: Segmenter,
+  settings: CutoutSettings,
+): Promise<Buffer | null> {
+  const found = await computeFrameAlpha(body, segmenter, settings);
+  if (found === null) return null;
+  const { frame, alpha } = found;
 
   // RGB берётся из исходного растра нетронутым: приём «текст за товаром» работает ровно
   // потому, что оба слоя — один растр, пиксель в пиксель (docs/TZ.md FR-06).
   return sharp(frame.rgb, { raw: { width: frame.width, height: frame.height, channels: 3 } })
-    .joinChannel(alphaFull, { raw: { width: frame.width, height: frame.height, channels: 1 } })
+    .joinChannel(alpha, { raw: { width: frame.width, height: frame.height, channels: 1 } })
     .png()
     .toBuffer();
+}
+
+/** Сэмплы альфы: `width × height` байт 0…255 построчно сверху вниз (docs/SPEC.md §5). */
+export interface MaskSamples {
+  readonly width: number;
+  readonly height: number;
+  readonly data: Buffer;
+}
+
+/**
+ * Кадр -> сэмплы альфы, либо `null` — «товара не нашлось» (то же суждение, что у выреза).
+ * Берётся альфа в размере кадра до наложения на кадр и уменьшается усреднением по площади,
+ * без порога.
+ */
+export async function computeMask(
+  body: Buffer,
+  segmenter: Segmenter,
+  settings: CutoutSettings,
+): Promise<MaskSamples | null> {
+  const found = await computeFrameAlpha(body, segmenter, settings);
+  if (found === null) return null;
+  const { frame, alpha } = found;
+
+  const { width, height } = maskDimensions(frame.width, frame.height);
+  const data = downscaleByArea(alpha, frame.width, frame.height, width, height);
+  return { width, height, data: Buffer.from(data.buffer, data.byteOffset, data.byteLength) };
 }
 
 /**
