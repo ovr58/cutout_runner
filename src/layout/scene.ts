@@ -78,18 +78,7 @@ export function createLayoutRunner(options: {
   };
 
   const snapshot = async (context: BrowserContext, request: LayoutRequest): Promise<unknown> => {
-    await context.route('**/*', (route) => {
-      const url = route.request().url();
-      if (url === PAGE_URL) {
-        return route.fulfill({ contentType: 'text/html; charset=utf-8', body: request.html });
-      }
-      if (url === `${ORIGIN}/frame.png`) {
-        return route.fulfill({ contentType: request.frameType, body: request.frame });
-      }
-      const font = url.startsWith(`${ORIGIN}/fonts/`) ? fonts.get(url.slice(ORIGIN.length + 7)) : undefined;
-      if (font !== undefined) return route.fulfill({ contentType: 'font/ttf', body: font });
-      return route.abort();
-    });
+    await context.route('**/*', (route) => answerRoute(route, request, fonts));
     const page = await context.newPage();
     await page.goto(PAGE_URL);
     await page.evaluate(code.dropForeignFontFaces);
@@ -138,6 +127,37 @@ export function createLayoutRunner(options: {
       if (current !== null) await (await current.catch(() => null))?.close();
     },
   };
+}
+
+/** Та часть `Route` Playwright, которой пользуется {@link answerRoute}. */
+export interface PageRoute {
+  request(): { url(): string };
+  fulfill(response: { contentType: string; body: string | Buffer }): Promise<void>;
+  abort(): Promise<void>;
+  continue(): Promise<void>;
+}
+
+/**
+ * Ответ на каждый запрос страницы — граница «без сети». Ответ получают только документ,
+ * `frame.png` из тела и свои шрифты; любой другой адрес обрывается и в сеть не уходит.
+ * Вынесено из контекста, чтобы границу проверял модульный тест, а не только живой Chromium:
+ * тот сам режет запросы к петле с публичной страницы и прячет ошибку здесь.
+ */
+export function answerRoute(
+  route: PageRoute,
+  request: Pick<LayoutRequest, 'html' | 'frame' | 'frameType'>,
+  fonts: ReadonlyMap<string, Buffer>,
+): Promise<void> {
+  const url = route.request().url();
+  if (url === PAGE_URL) {
+    return route.fulfill({ contentType: 'text/html; charset=utf-8', body: request.html });
+  }
+  if (url === `${ORIGIN}/frame.png`) {
+    return route.fulfill({ contentType: request.frameType, body: request.frame });
+  }
+  const font = url.startsWith(`${ORIGIN}/fonts/`) ? fonts.get(url.slice(ORIGIN.length + 7)) : undefined;
+  if (font !== undefined) return route.fulfill({ contentType: 'font/ttf', body: font });
+  return route.abort();
 }
 
 /** Копия кода страницы — выражение-объект; проверяется при старте, а не на первом запросе. */

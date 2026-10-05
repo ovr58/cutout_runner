@@ -7,7 +7,7 @@ import test, { after, describe } from 'node:test';
 
 import sharp from 'sharp';
 
-import { createLayoutRunner, type LayoutOutcome } from './scene';
+import { answerRoute, createLayoutRunner, type LayoutOutcome } from './scene';
 
 /**
  * Тесты живого Chromium: нужен браузер Playwright (`npx playwright install chromium`), сеть — нет.
@@ -144,5 +144,52 @@ describe('POST /layout — снятие сцены', () => {
       await runner.run(Buffer.from(JSON.stringify({ html: FIXTURE, canvas: CANVAS, frame: 'https://x/frame.png' }))),
       { kind: 'invalid' },
     );
+  });
+});
+
+describe('POST /layout — граница «без сети» (ответ на запрос страницы)', () => {
+  const REQUEST = { html: '<div id="card"></div>', frame: Buffer.from('frame'), frameType: 'image/png' as const };
+  const FONTS = new Map([['montserrat-regular.ttf', Buffer.from('ttf')]]);
+
+  async function answer(url: string): Promise<string[]> {
+    const calls: string[] = [];
+    await answerRoute(
+      {
+        request: () => ({ url: () => url }),
+        fulfill: async ({ contentType }) => {
+          calls.push(`fulfill ${contentType}`);
+        },
+        abort: async () => {
+          calls.push('abort');
+        },
+        continue: async () => {
+          calls.push('continue');
+        },
+      },
+      REQUEST,
+      FONTS,
+    );
+    return calls;
+  }
+
+  test('свои адреса получают ответ: документ, кадр, свой шрифт', async () => {
+    assert.deepEqual(await answer('http://layout.invalid/card.html'), ['fulfill text/html; charset=utf-8']);
+    assert.deepEqual(await answer('http://layout.invalid/frame.png'), ['fulfill image/png']);
+    assert.deepEqual(await answer('http://layout.invalid/fonts/montserrat-regular.ttf'), ['fulfill font/ttf']);
+  });
+
+  test('любой другой адрес обрывается и в сеть не уходит', async () => {
+    for (const url of [
+      'https://example.com/a.png', // <img src="https://…">
+      'https://fonts.googleapis.com/css2?family=Inter', // <link href>
+      'https://evil.example/frame.html', // <iframe src>
+      'http://127.0.0.1:8787/health', // петля: сам сервис
+      'http://169.254.169.254/latest/meta-data/', // метаданные облака
+      'http://layout.invalid/x.css', // свой origin, но не свой файл
+      'http://layout.invalid/fonts/unknown.ttf',
+      'https://layout.invalid/card.html', // другой протокол — другой адрес
+    ]) {
+      assert.deepEqual(await answer(url), ['abort'], url);
+    }
   });
 });
