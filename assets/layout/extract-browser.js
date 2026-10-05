@@ -1,4 +1,4 @@
-// Снято с MK supabase/functions/_shared/card-layout/html/extract-browser.ts (ded32a2).
+// Снято с MK supabase/functions/_shared/card-layout/html/extract-browser.ts (9a5ddfb).
 // Не править руками: пересъёмка — команда из README, раздел «POST /layout».
 ({
 FONT_FACES: [["montserrat-regular.ttf","Montserrat",400],["montserrat-semibold.ttf","Montserrat",600],["montserrat-bold.ttf","Montserrat",700],["montserrat-black.ttf","Montserrat",900],["marck-script.ttf","Marck Script",400],["noto-sans-symbols-2.ttf","Montserrat",400,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Montserrat",600,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Montserrat",700,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Montserrat",900,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Marck Script",400,"✓✔★☆●○►➔➜➤"]],
