@@ -1,7 +1,17 @@
-// Снято с MK supabase/functions/_shared/card-layout/html/extract-browser.ts (1cf2d4b).
+// Снято с MK supabase/functions/_shared/card-layout/html/extract-browser.ts (ded32a2).
 // Не править руками: пересъёмка — команда из README, раздел «POST /layout».
 ({
-FONT_FACES: [["montserrat-regular.ttf","Montserrat",400],["montserrat-semibold.ttf","Montserrat",600],["montserrat-bold.ttf","Montserrat",700],["montserrat-black.ttf","Montserrat",900],["marck-script.ttf","Marck Script",400]],
+FONT_FACES: [["montserrat-regular.ttf","Montserrat",400],["montserrat-semibold.ttf","Montserrat",600],["montserrat-bold.ttf","Montserrat",700],["montserrat-black.ttf","Montserrat",900],["marck-script.ttf","Marck Script",400],["noto-sans-symbols-2.ttf","Montserrat",400,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Montserrat",600,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Montserrat",700,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Montserrat",900,"✓✔★☆●○►➔➜➤"],["noto-sans-symbols-2.ttf","Marck Script",400,"✓✔★☆●○►➔➜➤"]],
+fontFaceCss: function fontFaceCss(faces            , base        )         {
+  return faces
+    .map(([file, family, weight, glyphs]) => {
+      const range = glyphs === undefined
+        ? ''
+        : `;unicode-range:${Array.from(glyphs, (char) => `U+${(char.codePointAt(0) ?? 0).toString(16)}`).join(',')}`
+      return `@font-face{font-family:'${family}';font-weight:${weight};src:url('${base}${file}') format('truetype')${range}}`
+    })
+    .join('\n')
+},
 dropForeignFontFaces: function dropForeignFontFaces()       {
   for (const sheet of Array.from(document.styleSheets)) {
     let rules             
@@ -22,11 +32,11 @@ addStyle: function addStyle(css        )       {
   style.textContent = css
   document.head.append(style)
 },
-missingFonts: async function missingFonts(faces                                                  )                    {
-  await Promise.all(faces.map(([, family, weight]) => document.fonts.load(`${weight} 16px '${family}'`)))
+missingFonts: async function missingFonts(faces            )                    {
+  await Promise.all(faces.map(([, family, weight, glyphs]) => document.fonts.load(`${weight} 16px '${family}'`, glyphs)))
   await document.fonts.ready
   return faces
-    .filter(([, family, weight]) => !document.fonts.check(`${weight} 16px '${family}'`))
+    .filter(([, family, weight, glyphs]) => !document.fonts.check(`${weight} 16px '${family}'`, glyphs))
     .map(([file]) => file)
 },
 sceneInPage: function sceneInPage(canvas                                   )            {

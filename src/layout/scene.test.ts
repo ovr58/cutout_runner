@@ -100,6 +100,21 @@ describe('POST /layout — снятие сцены', () => {
     });
   });
 
+  test('значки рисует свой шрифт значков, а не системный запасной', async () => {
+    // Эталон — офлайн-инструмент родительского продукта (B7): строка «✓★➤» Montserrat 900 40px
+    // шириной 111 px. Без граней шрифта значков Chromium берёт системный шрифт — на Windows
+    // 103 px, на коробке свой, — и сцена расходится с офлайн-сценой и со сборкой по слоям.
+    const outcome = await layout(
+      card('<div id="glyph" style="position:absolute;left:10px;top:10px;font:900 40px Montserrat">✓★➤</div>'),
+      { width: 400, height: 400 },
+    );
+
+    assert.equal(outcome.kind, 'scene');
+    const [line] = (outcome as { scene: Scene }).scene.elements[0]?.lines ?? [];
+    assert.equal(line?.text, '✓★➤');
+    assert.ok(Math.abs((line?.rect.w ?? 0) - 111) <= 1, `ширина ${line?.rect.w}`);
+  });
+
   test('<script> и url(https://…) — отказ до браузера', async () => {
     assert.deepEqual(await layout(card('<script>1</script>')), { kind: 'refused', reason: 'script' });
     assert.deepEqual(

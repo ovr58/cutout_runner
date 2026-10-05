@@ -98,7 +98,7 @@ npx playwright install --only-shell chromium   # один раз; без бра�
 ```bash
 node --input-type=module -e "
 const m = await import('./supabase/functions/_shared/card-layout/html/extract-browser.ts')
-const fns = ['dropForeignFontFaces', 'addStyle', 'missingFonts', 'sceneInPage'].map((name) => name + ': ' + m[name] + ',\n').join('')
+const fns = ['fontFaceCss', 'dropForeignFontFaces', 'addStyle', 'missingFonts', 'sceneInPage'].map((name) => name + ': ' + m[name] + ',\n').join('')
 process.stdout.write('// Снято с MK supabase/functions/_shared/card-layout/html/extract-browser.ts (' + process.argv[1] + ').\n// Не править руками: пересъёмка — команда из README, раздел «POST /layout».\n({\nFONT_FACES: ' + JSON.stringify(m.FONT_FACES) + ',\n' + fns + '})\n')
 " "$(git rev-parse --short HEAD)" > ../cutout_runner/assets/layout/extract-browser.js
 ```

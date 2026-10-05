@@ -29,8 +29,13 @@ export interface LayoutRunner {
   readonly close: () => Promise<void>;
 }
 
+/** Грань шрифта: файл · семейство · насыщенность · знаки, если грань только для них. */
+type FontFace = readonly [file: string, family: string, weight: number, glyphs?: string];
+
 interface BrowserCode {
-  readonly FONT_FACES: readonly (readonly [file: string, family: string, weight: number])[];
+  readonly FONT_FACES: readonly FontFace[];
+  /** CSS граней; исполняется здесь, в Node, а не в странице. */
+  readonly fontFaceCss: (faces: readonly FontFace[], base: string) => string;
   readonly dropForeignFontFaces: () => void;
   readonly addStyle: (css: string) => void;
   readonly missingFonts: (faces: unknown) => Promise<string[]>;
@@ -50,10 +55,8 @@ export function createLayoutRunner(options: {
   const fonts = new Map(
     code.FONT_FACES.map(([file]) => [file, readFileSync(join(options.assetsDir, 'fonts', file))]),
   );
-  const fontCss = code.FONT_FACES.map(
-    ([file, family, weight]) =>
-      `@font-face{font-family:'${family}';font-weight:${weight};src:url('${ORIGIN}/fonts/${file}') format('truetype')}`,
-  ).join('\n');
+  // Грани шрифта значков (unicode-range) — тем же генератором, что у офлайн-инструмента.
+  const fontCss = code.fontFaceCss(code.FONT_FACES, `${ORIGIN}/fonts/`);
 
   // Один браузер на процесс: запуск Chromium стоит секунды, страница — десятки миллисекунд.
   let browser: Promise<Browser> | null = null;
@@ -168,6 +171,7 @@ function loadBrowserCode(path: string): BrowserCode {
     code === null ||
     typeof code !== 'object' ||
     !Array.isArray(code.FONT_FACES) ||
+    typeof code.fontFaceCss !== 'function' ||
     typeof code.dropForeignFontFaces !== 'function' ||
     typeof code.addStyle !== 'function' ||
     typeof code.missingFonts !== 'function' ||
