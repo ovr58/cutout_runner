@@ -76,6 +76,9 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 LockPersonality=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
+# Chromium (POST /layout) зовёт pkey_alloc - вне @system-service; без него seccomp убивает
+# браузер на старте («GPU process isn't usable»). Найдено перебором ограничений 2026-10-05.
+SystemCallFilter=@pkey
 CapabilityBoundingSet=
 AmbientCapabilities=
 UMask=0077

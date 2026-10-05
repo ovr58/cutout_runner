@@ -64,7 +64,7 @@ export PLAYWRIGHT_BROWSERS_PATH=/opt/cutout-runner/ms-playwright
 sudo npx playwright install-deps chromium
 npx playwright install --only-shell chromium
 
-npm test        # 97 проверок; весов и сети не требуют, браузера — требуют
+npm test        # 100 проверок; весов и сети не требуют, браузера — требуют
 ```
 
 ## 3. Веса модели и её лицензия
@@ -320,11 +320,11 @@ npm run build
 export PLAYWRIGHT_BROWSERS_PATH=/opt/cutout-runner/ms-playwright
 sudo npx playwright install-deps chromium      # системные библиотеки браузера
 npx playwright install --only-shell chromium   # сам браузер, ~100 МБ в каталог сервиса
-npm test                                       # 97 проверок, все зелёные - иначе не продолжать
+npm test                                       # 100 проверок, все зелёные - иначе не продолжать
 
 diff deploy/cutout-runner.service /etc/systemd/system/cutout-runner.service
-#   ожидается одна разница: строка Environment=PLAYWRIGHT_BROWSERS_PATH; другая - не копировать,
-#   а перенести эту строку руками (sudoedit), чтобы не затереть настройку коробки
+#   ожидаются только строки Environment=PLAYWRIGHT_BROWSERS_PATH и SystemCallFilter=@pkey; иная разница - не копировать,
+#   а перенести эти строки руками (sudoedit), чтобы не затереть настройку коробки
 sudo cp deploy/cutout-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 

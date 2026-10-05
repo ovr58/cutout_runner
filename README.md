@@ -52,7 +52,7 @@ Runtime на отдельной машине. Почему не в изолят�
 ```bash
 npm ci
 npx playwright install --only-shell chromium   # браузер для POST /layout, один раз
-npm test                       # 97 проверок; весов модели и сети не требуют, браузера — требуют
+npm test                       # 100 проверок; весов модели и сети не требуют, браузера — требуют
 npm run build
 
 bash deploy/fetch-model.sh ./models       # веса + текст лицензии MIT, с проверкой MD5
