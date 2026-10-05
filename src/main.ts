@@ -1,6 +1,9 @@
+import { join } from 'node:path';
+
 import { makeAuthorizer } from './auth';
 import { ConfigError, loadConfig } from './config';
 import { createServer } from './http/server';
+import { createLayoutRunner } from './layout/scene';
 import { errorMessage, log } from './logger';
 import { createSegmenter, type Segmenter } from './model/session';
 import { makeOperations } from './operations';
@@ -20,6 +23,13 @@ const MAX_BODY_BYTES = 32 * 1024 * 1024;
 /** Инференс на `u2netp` — доли секунды (замер 2026-09-06: 0,55 с на одном потоке). */
 const RETRY_AFTER_SECONDS = 5;
 
+/**
+ * `/layout`: страница карточки — десятки КБ HTML плюс кадр data-URI; потолок и время на страницу
+ * заданы планом родительского продукта (html-layout-authoring, шаг C2), а не подобраны здесь.
+ */
+const LAYOUT_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const LAYOUT_TIMEOUT_MS = 10_000;
+
 function main(): void {
   const config = loadConfig();
 
@@ -27,13 +37,21 @@ function main(): void {
   const authorize = makeAuthorizer(config.secret);
   let segmenter: Segmenter | null = null;
   const operations = makeOperations(gate, () => segmenter, config);
+  // Шрифты и код страницы читаются здесь, при старте: их нехватка — отказ запуска, а не 500.
+  const layoutRunner = createLayoutRunner({
+    assetsDir: join(__dirname, '..', 'assets'),
+    timeoutMs: LAYOUT_TIMEOUT_MS,
+  });
 
   const server = createServer({
     authorize,
     isReady: () => segmenter !== null,
     cutout: operations.cutout,
     mask: operations.mask,
+    // Та же очередь, что у инференса: на коробке одно ядро, Chromium и ORT разом друг другу мешают.
+    layout: (body) => gate(() => layoutRunner.run(body)),
     maxBodyBytes: MAX_BODY_BYTES,
+    layoutMaxBodyBytes: LAYOUT_MAX_BODY_BYTES,
     retryAfterSeconds: RETRY_AFTER_SECONDS,
   });
 
@@ -69,8 +87,11 @@ function main(): void {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       log.info('server.stopping', { signal });
-      server.close();
-      // Начатый вырез доводится до конца, простаивающие соединения закрываются сразу.
+      // Начатый вырез доводится до конца, простаивающие соединения закрываются сразу; Chromium
+      // гасится после последнего ответа.
+      server.close(() => {
+        void layoutRunner.close();
+      });
       server.closeIdleConnections();
     });
   }

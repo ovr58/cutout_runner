@@ -19,6 +19,9 @@ WorkingDirectory=/opt/cutout-runner
 # systemd до запуска процесса, поэтому пользователю cutout доступ к нему не нужен.
 # В git этот файл не попадает никогда - пример значений в cutout-runner.env.example.
 EnvironmentFile=/etc/cutout-runner.env
+# Chromium для POST /layout: у пользователя cutout нет домашнего каталога, а ProtectHome
+# закрывает /home - браузер лежит в каталоге сервиса (deploy/README.md, раздел 2).
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/cutout-runner/ms-playwright
 ExecStart=/usr/bin/node /opt/cutout-runner/dist/main.js
 
 Restart=on-failure

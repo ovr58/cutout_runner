@@ -51,7 +51,8 @@ Runtime на отдельной машине. Почему не в изолят�
 
 ```bash
 npm ci
-npm test                       # 47 проверок; весов модели и сети не требуют
+npx playwright install --only-shell chromium   # браузер для POST /layout, один раз
+npm test                       # 97 проверок; весов модели и сети не требуют, браузера — требуют
 npm run build
 
 bash deploy/fetch-model.sh ./models       # веса + текст лицензии MIT, с проверкой MD5
@@ -78,12 +79,41 @@ curl -s http://127.0.0.1:8787/health
 Образец файла окружения — [`deploy/cutout-runner.env.example`](deploy/cutout-runner.env.example)
 (значения подставные).
 
+### `POST /layout` — снятие сцены страницы карточки
+
+Контракт — [`docs/SPEC.md`](docs/SPEC.md) §5. Работает в Chromium из пакета `playwright`
+(версия закреплена точно: `1.62.1` ↔ сборка браузера `chromium_headless_shell-1234`):
+
+```bash
+npx playwright install --only-shell chromium   # один раз; без браузера тесты /layout падают
+```
+
+Шрифты (`assets/fonts/`) и код внутри страницы (`assets/layout/extract-browser.js`) — **копии**
+из родительского продукта (Merch Kit): офлайн-инструмент там и этот сервис обязаны снимать сцену
+одним и тем же текстом. Эталон этого равенства — тест `src/layout/scene.test.ts` против
+`src/layout/fixtures/home-chair.scene.json`. Поменялся
+`supabase/functions/_shared/card-layout/html/extract-browser.ts` в Merch Kit — пересними копию,
+из корня Merch Kit (путь к этому репозиторию — в последнем аргументе):
+
+```bash
+node --input-type=module -e "
+const m = await import('./supabase/functions/_shared/card-layout/html/extract-browser.ts')
+const fns = ['dropForeignFontFaces', 'addStyle', 'missingFonts', 'sceneInPage'].map((name) => name + ': ' + m[name] + ',\n').join('')
+process.stdout.write('// Снято с MK supabase/functions/_shared/card-layout/html/extract-browser.ts (' + process.argv[1] + ').\n// Не править руками: пересъёмка — команда из README, раздел «POST /layout».\n({\nFONT_FACES: ' + JSON.stringify(m.FONT_FACES) + ',\n' + fns + '})\n')
+" "$(git rev-parse --short HEAD)" > ../cutout_runner/assets/layout/extract-browser.js
+```
+
+Шрифты — `cp tools/card-pipeline/fonts/*.ttf tools/card-pipeline/fonts/*.license.txt
+../cutout_runner/assets/fonts/` оттуда же. После пересъёмки — `npm test` здесь.
+
 ## Устройство
 
 ```
 src/main.ts          порядок старта: конфиг → сокет 127.0.0.1 (503) → сессия ORT → ready
-  http/server.ts     два маршрута, сырые байты; про ONNX не знает
-  queue.ts           ворота «один вырез за раз», сверх очереди — 503 + Retry-After
+  http/server.ts     три маршрута: сырые байты кадра и JSON страницы; про ONNX и Chromium не знает
+  queue.ts           ворота «одна тяжёлая работа за раз», сверх очереди — 503 + Retry-After
+  layout/scene.ts    страница карточки → сцена в Chromium без JS и без сети; про HTTP не знает
+  layout/request.ts  разбор тела /layout, отказ на <script> и url(…)
   cutout/pipeline.ts кадр → альфа; про HTTP не знает («выреза нет» = null, а не 204)
   cutout/mask.ts     чистая арифметика: сигмоида, покрытие, доля полутона
   model/session.ts   резидентная ONNX-сессия, арена памяти выключена

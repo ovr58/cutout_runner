@@ -2,6 +2,7 @@ import http from 'node:http';
 
 import type { Authorizer } from '../auth';
 import { type MaskSamples, UnreadableImageError } from '../cutout/pipeline';
+import type { LayoutOutcome } from '../layout/scene';
 import { GateBusyError } from '../queue';
 import { errorMessage, log } from '../logger';
 
@@ -13,6 +14,8 @@ import { errorMessage, log } from '../logger';
  * Этот слой ничего не знает про ONNX: он различает только «вырез», «выреза нет»,
  * «не разобралось» и «занято». Две операции — `/cutout` и `/mask` — идут одним путём: тот же
  * секрет, те же проверки входа, та же очередь; различается только то, что отдаётся в ответ.
+ * Третья — `/layout` — тот же секрет и та же очередь, но вход другой: JSON со страницей
+ * карточки, свой потолок тела, и вдобавок к прочим исходам — 422 «эту страницу не снять».
  */
 export interface ServerDeps {
   readonly authorize: Authorizer;
@@ -21,8 +24,12 @@ export interface ServerDeps {
   readonly cutout: (body: Buffer) => Promise<Buffer | null>;
   /** Сэмплы маски или `null` — «товара не нашлось» (то же суждение, что у выреза). */
   readonly mask: (body: Buffer) => Promise<MaskSamples | null>;
+  /** Сцена страницы карточки или отказ. Может бросить {@link GateBusyError}. */
+  readonly layout: (body: Buffer) => Promise<LayoutOutcome>;
   /** Потолок тела. Основной стоит в nginx (413 до Node); этот — на случай запуска без него. */
   readonly maxBodyBytes: number;
+  /** Потолок тела `/layout`: HTML и кадр data-URI. Свой, ниже кадрового (ADR-0016 родителя). */
+  readonly layoutMaxBodyBytes: number;
   /** Значение заголовка `Retry-After` при занятой очереди, секунды. */
   readonly retryAfterSeconds: number;
 }
@@ -51,7 +58,7 @@ async function handle(
       return sendHealth(res, deps.isReady());
     }
 
-    if (path !== '/cutout' && path !== '/mask') return send(res, 404);
+    if (path !== '/cutout' && path !== '/mask' && path !== '/layout') return send(res, 404);
     if (method !== 'POST') return send(res, 405);
 
     // Авторизация — до всего остального: неавторизованный не должен узнать даже того,
@@ -61,12 +68,26 @@ async function handle(
     if (!deps.isReady()) return sendBusy(res, deps.retryAfterSeconds);
 
     const contentType = (req.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
-    if (contentType === undefined || !ACCEPTED_TYPES.has(contentType)) return send(res, 400);
+    const isLayout = path === '/layout';
+    const accepted = isLayout ? contentType === 'application/json' : ACCEPTED_TYPES.has(contentType ?? '');
+    if (!accepted) return send(res, 400);
 
-    const body = await readBody(req, deps.maxBodyBytes);
+    const body = await readBody(req, isLayout ? deps.layoutMaxBodyBytes : deps.maxBodyBytes);
     if (body === TOO_LARGE) return send(res, 413);
     if (body === UNREADABLE) return send(res, 400);
     bytesIn = body.byteLength;
+
+    if (isLayout) {
+      const outcome = await deps.layout(body);
+      if (outcome.kind === 'invalid') return send(res, 400);
+      // Причина — из закрытого списка (script · url · timeout), не текст исключения: вызывающий
+      // пишет её в свой журнал и откатывается к библиотеке макетов.
+      const [status, payload] =
+        outcome.kind === 'scene' ? [200, outcome.scene] : [422, { reason: outcome.reason }];
+      return send(res, status, Buffer.from(JSON.stringify(payload), 'utf8'), {
+        'content-type': 'application/json',
+      });
+    }
 
     if (path === '/mask') {
       const samples = await deps.mask(body);

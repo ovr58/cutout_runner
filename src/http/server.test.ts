@@ -9,13 +9,16 @@ import { createServer, type ServerDeps } from './server';
 const SECRET = 'shared-secret';
 const PNG = Buffer.from('fake-png-bytes');
 const MASK = { width: 3, height: 2, data: Buffer.from([0, 128, 255, 255, 128, 0]) };
+const SCENE = { canvas: { width: 2, height: 2 }, background: '', elements: [], rejected: [] };
 
 const BASE_DEPS: ServerDeps = {
   authorize: (header) => header === `Bearer ${SECRET}`,
   isReady: () => true,
   cutout: async () => PNG,
   mask: async () => MASK,
+  layout: async () => ({ kind: 'scene', scene: SCENE }),
   maxBodyBytes: 1024,
+  layoutMaxBodyBytes: 512,
   retryAfterSeconds: 30,
 };
 
@@ -323,6 +326,117 @@ describe('POST /mask', () => {
   });
 });
 
+describe('POST /layout', () => {
+  const postLayout = (base: string, init: RequestInit = {}): Promise<Response> =>
+    post(
+      base,
+      {
+        headers: { authorization: `Bearer ${SECRET}`, 'content-type': 'application/json' },
+        body: '{"html":"<div id=card></div>"}',
+        ...init,
+      },
+      '/layout',
+    );
+
+  test('без секрета и с неверным секретом — 401, одинаково, и снятие не запускается', async () => {
+    let called = false;
+    await withServer(
+      {
+        layout: async () => {
+          called = true;
+          return { kind: 'scene', scene: SCENE };
+        },
+      },
+      async (base) => {
+        const missing = await postLayout(base, { headers: { 'content-type': 'application/json' } });
+        const wrong = await postLayout(base, {
+          headers: { authorization: 'Bearer nope', 'content-type': 'application/json' },
+        });
+        assert.equal(missing.status, 401);
+        assert.equal(wrong.status, 401);
+        assert.deepEqual(headersWithoutDate(missing), headersWithoutDate(wrong));
+      },
+    );
+    assert.equal(called, false);
+  });
+
+  test('сцена отдаётся как JSON', async () => {
+    let received = '';
+    await withServer(
+      {
+        layout: async (body) => {
+          received = body.toString('utf8');
+          return { kind: 'scene', scene: SCENE };
+        },
+      },
+      async (base) => {
+        const res = await postLayout(base, {
+          headers: {
+            authorization: `Bearer ${SECRET}`,
+            'content-type': 'application/json; charset=utf-8',
+          },
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get('content-type'), 'application/json');
+        assert.deepEqual(await res.json(), SCENE);
+      },
+    );
+    assert.equal(received, '{"html":"<div id=card></div>"}');
+  });
+
+  test('отказ по содержимому — 422 с причиной, неразборчивое тело — 400 без тела', async () => {
+    await withServer({ layout: async () => ({ kind: 'refused', reason: 'script' }) }, async (base) => {
+      const res = await postLayout(base);
+      assert.equal(res.status, 422);
+      assert.deepEqual(await res.json(), { reason: 'script' });
+    });
+    await withServer({ layout: async () => ({ kind: 'invalid' }) }, async (base) => {
+      const res = await postLayout(base);
+      assert.equal(res.status, 400);
+      assert.equal(await res.text(), '');
+    });
+  });
+
+  test('свой потолок тела, не общий с кадром: чужой Content-Type — 400, больше потолка — 413', async () => {
+    await withServer({}, async (base) => {
+      const png = await postLayout(base, {
+        headers: { authorization: `Bearer ${SECRET}`, 'content-type': 'image/png' },
+      });
+      assert.equal(png.status, 400);
+      // 700 байт: больше потолка /layout (512), но меньше общего (1024).
+      const huge = await postLayout(base, { body: Buffer.alloc(700, 32) });
+      assert.equal(huge.status, 413);
+    });
+  });
+
+  test('очередь занята — 503 с Retry-After; поломка — 500 без внутренностей', async () => {
+    await withServer(
+      {
+        layout: async () => {
+          throw new GateBusyError();
+        },
+      },
+      async (base) => {
+        const res = await postLayout(base);
+        assert.equal(res.status, 503);
+        assert.equal(res.headers.get('retry-after'), '30');
+      },
+    );
+    await withServer(
+      {
+        layout: async () => {
+          throw new Error('chromium at /opt/x crashed');
+        },
+      },
+      async (base) => {
+        const res = await postLayout(base);
+        assert.equal(res.status, 500);
+        assert.equal(await res.text(), '');
+      },
+    );
+  });
+});
+
 describe('маршрутизация', () => {
   test('чужой путь — 404, чужой метод — 405', async () => {
     await withServer({}, async (base) => {
@@ -330,6 +444,7 @@ describe('маршрутизация', () => {
       assert.equal((await fetch(`${base}/models`)).status, 404);
       assert.equal((await fetch(`${base}/cutout`)).status, 405);
       assert.equal((await fetch(`${base}/mask`)).status, 405);
+      assert.equal((await fetch(`${base}/layout`)).status, 405);
       assert.equal((await fetch(`${base}/health`, { method: 'POST' })).status, 405);
     });
   });

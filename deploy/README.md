@@ -56,7 +56,15 @@ cd /opt/cutout-runner
 ONNXRUNTIME_NODE_INSTALL=skip npm ci
 
 npm run build
-npm test        # 56 проверок, весов и сети не требуют
+
+# Chromium для POST /layout. Системные библиотеки ставит root, сам браузер ложится в каталог
+# сервиса: у пользователя cutout нет домашнего каталога, а unit закрывает /home (ProtectHome).
+# Тот же путь стоит в unit (Environment=PLAYWRIGHT_BROWSERS_PATH).
+export PLAYWRIGHT_BROWSERS_PATH=/opt/cutout-runner/ms-playwright
+sudo npx playwright install-deps chromium
+npx playwright install --only-shell chromium
+
+npm test        # 97 проверок; весов и сети не требуют, браузера — требуют
 ```
 
 ## 3. Веса модели и её лицензия
@@ -297,6 +305,57 @@ sudo systemctl reload nginx
 
 После этого - проверка 4а из раздела «Приёмка». `/mask` делит с `/cutout` зону `limit_req`
 (`rate=30r/m`, `burst=2`) и очередь инференса.
+
+### Включение `POST /layout` на уже установленной коробке
+
+`/layout` открывает страницу карточки в Chromium. Сверх обычного обновления нужны браузер,
+переменная с путём к нему в unit и одна строка nginx — та же, что правилась для `/mask`:
+
+```bash
+cd /opt/cutout-runner
+sudo -u "$USER" git pull
+ONNXRUNTIME_NODE_INSTALL=skip npm ci   # флаг - тот же, что в разделе 2: без него OOM на 1 ГБ
+npm run build
+
+export PLAYWRIGHT_BROWSERS_PATH=/opt/cutout-runner/ms-playwright
+sudo npx playwright install-deps chromium      # системные библиотеки браузера
+npx playwright install --only-shell chromium   # сам браузер, ~100 МБ в каталог сервиса
+npm test                                       # 97 проверок, все зелёные - иначе не продолжать
+
+diff deploy/cutout-runner.service /etc/systemd/system/cutout-runner.service
+#   ожидается одна разница: строка Environment=PLAYWRIGHT_BROWSERS_PATH; другая - не копировать,
+#   а перенести эту строку руками (sudoedit), чтобы не затереть настройку коробки
+sudo cp deploy/cutout-runner.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+sudo grep -n 'location' /etc/nginx/conf.d/cutout-runner.conf   # ожидается: location ~ ^/(cutout|mask)$ {
+sudo sed -i 's#location ~ ^/(cutout|mask)$ {#location ~ ^/(cutout|mask|layout)$ {#' /etc/nginx/conf.d/cutout-runner.conf
+sudo nginx -t                                                  # syntax is ok, иначе не продолжать
+sudo systemctl restart cutout-runner
+sudo systemctl reload nginx
+```
+
+Проверка — 4б:
+
+```bash
+# 4б. Сцена страницы (версия с `POST /layout`): тот же секрет, та же очередь; тело - JSON.
+#     Кадр - однотонный PNG нужного размера: сцене нужны размеры кадра, а не его пиксели.
+cd /opt/cutout-runner
+node -e "require('sharp')({create:{width:896,height:1200,channels:3,background:'#ccc'}}).png().toBuffer().then((png)=>process.stdout.write(JSON.stringify({html:require('fs').readFileSync('src/layout/fixtures/home-chair.html','utf8'),canvas:{width:896,height:1200},frame:'data:image/png;base64,'+png.toString('base64')})))" > /tmp/layout.json
+curl -s -X POST -H "Authorization: Bearer $SECRET" -H "Content-Type: application/json" \
+     --data-binary @/tmp/layout.json "https://$DOMAIN/layout" -o scene.json \
+     -w "%{http_code} %{time_total}s\n"                # 200 и время вызова
+node -e "const s=require('./scene.json');console.log(s.elements.filter(e=>e.kind==='frame').length, s.elements.filter(e=>e.kind==='text').length, s.rejected.length)"
+#   ожидается: 1 11 0
+sudo systemctl show cutout-runner -p MemoryPeak            # Chromium в той же cgroup: ниже MemoryHigh
+# без секрета - 401; <script> в html - 422 {"reason":"script"}
+```
+
+Если вместо 200 пришёл 500 — в журнале строка `request.failed` с причиной запуска браузера.
+Unit запускает службу с фильтром системных вызовов и без пространств имён; Chromium Playwright
+запускается без собственной песочницы (`--no-sandbox` по умолчанию), и это совместимо с
+`RestrictNamespaces`, но на самой коробке не проверялось. Причину — в отчёт родительскому
+проекту, unit наугад не ослаблять: граница доверия держится и на нём.
 
 ### Смена модели на уже установленной коробке
 

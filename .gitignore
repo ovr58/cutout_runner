@@ -42,6 +42,9 @@ dist/
 
 # Веса модели — НЕ в git (десятки МБ; скачиваются установщиком, см. deploy/README.md).
 models/
+
+# Браузер Playwright на коробке (deploy/README.md, раздел 2) - сотня МБ, ставится установщиком.
+ms-playwright/
 *.onnx
 
 # Локальное окружение разработки (секрет!) — см. deploy/cutout-runner.env.example.

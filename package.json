@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "onnxruntime-node": "^1.23.0",
+    "playwright": "1.62.1",
     "sharp": "^0.35.4"
   },
   "devDependencies": {
